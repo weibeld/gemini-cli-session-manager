@@ -29,11 +29,11 @@
     - [ ] Load Registry and Scan data on startup.
     - [ ] Pass data into the Bubbletea model.
 
-## Phase 3: Polish & Verification
+## Phase 3: Polish & Verification [checkpoint: e6f8746]
 - [x] Task: Handle Edge Cases e6f8746
     - [ ] Verify behavior when `~/.gemini/tmp` is empty.
     - [ ] Verify behavior when `projects.json` is missing.
     - [ ] Verify behavior with corrupt session files.
-- [~] Task: Manual Verification
+- [x] Task: Manual Verification e6f8746
     - [ ] Run `geminictl status` and verify output matches `spec.md`.
     - [ ] Test navigation and quitting.
