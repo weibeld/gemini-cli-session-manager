@@ -19,13 +19,13 @@
 ## Phase 2: CLI & TUI Implementation
 - [x] Task: Setup `geminictl status` command 2185954
     - [ ] Use Cobra to create the `status` command entry point.
-- [~] Task: Build TUI Model (Bubbletea)
+- [x] Task: Build TUI Model (Bubbletea) f4e42d8
     - [ ] Define the Bubbletea `Model` struct.
     - [ ] Implement `Init`, `Update`, and `View` methods.
     - [ ] Implement Project list view.
     - [ ] Implement Session list view (nested or side-by-side).
     - [ ] Add styling for "Orphaned" projects (red/dimmed).
-- [ ] Task: Connect Data to TUI
+- [~] Task: Connect Data to TUI
     - [ ] Load Registry and Scan data on startup.
     - [ ] Pass data into the Bubbletea model.
 
