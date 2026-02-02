@@ -6,11 +6,11 @@
     - [ ] Set up project structure (`cmd/`, `internal/`, `pkg/`)
     - [ ] Install Cobra: `go get -u github.com/spf13/cobra`
     - [ ] Install Bubbletea: `go get -u github.com/charmbracelet/bubbletea`
-- [~] Task: Implement Project Registry
+- [x] Task: Implement Project Registry f448f40
     - [ ] Define `Registry` struct and JSON schema.
     - [ ] Implement `LoadRegistry` and `SaveRegistry` functions.
     - [ ] Implement logic to check if a project path still exists (orphan detection).
-- [ ] Task: Implement Session Scanning
+- [~] Task: Implement Session Scanning
     - [ ] Define `Session` and `Project` domain models.
     - [ ] Implement `ScanGeminiTmp` function to walk `~/.gemini/tmp`.
     - [ ] Implement parsing of `session-*.json` to extract metadata (ID, count, time).
