@@ -4,5 +4,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [ ] **Track: Build `geminictl status` command**
+- [~] **Track: Build `geminictl status` command**
   *Link: [./tracks/status_command_20260202/](./tracks/status_command_20260202/)*

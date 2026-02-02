@@ -1,7 +1,7 @@
 # Implementation Plan - Build `geminictl status`
 
 ## Phase 1: Scaffolding & Core Logic
-- [ ] Task: Initialize Go project
+- [~] Task: Initialize Go project
     - [ ] Run `go mod init`
     - [ ] Set up project structure (`cmd/`, `internal/`, `pkg/`)
     - [ ] Install Cobra: `go get -u github.com/spf13/cobra`
