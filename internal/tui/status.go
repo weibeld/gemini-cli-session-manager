@@ -27,8 +27,9 @@ var (
 	detailsStyle = lipgloss.NewStyle().
 		Padding(1).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(subtle).
-		ExpandWidth(true)
+		BorderForeground(subtle)
+
+	highlightStyle = lipgloss.NewStyle().Foreground(highlight)
 
 	titleStyle = lipgloss.NewStyle().
 		Bold(true).
@@ -152,7 +153,7 @@ func (m Model) View() string {
 					id = id[:8]
 				}
 				main.WriteString(fmt.Sprintf("• %s | %d messages | last: %s\n",
-					highlight.Render(id),
+					highlightStyle.Render(id),
 					s.MessageCount,
 					formatRelativeTime(s.LastUpdate)))
 			}

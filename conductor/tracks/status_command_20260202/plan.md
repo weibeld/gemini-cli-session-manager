@@ -25,7 +25,7 @@
     - [ ] Implement Project list view.
     - [ ] Implement Session list view (nested or side-by-side).
     - [ ] Add styling for "Orphaned" projects (red/dimmed).
-- [~] Task: Connect Data to TUI
+- [x] Task: Connect Data to TUI 2e062f4
     - [ ] Load Registry and Scan data on startup.
     - [ ] Pass data into the Bubbletea model.
 
