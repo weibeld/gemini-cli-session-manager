@@ -1,11 +1,11 @@
 # Implementation Plan - Background Project Scanning
 
 ## Phase 1: Core Logic & Concurrency
-- [~] Task: Refactor Scanner for Streaming
+- [x] Task: Refactor Scanner for Streaming 084c20c
     - [ ] Modify `internal/scanner` to support a "Resolve" mode that emits matches over a channel.
     - [ ] Implement the 4-tier directory walking logic from the POC.
     - [ ] Add logic to skip already resolved projects.
-- [ ] Task: Integrate Background Scanning in Bubbletea
+- [~] Task: Integrate Background Scanning in Bubbletea
     - [ ] Define a `ResolutionMsg` to update the Model when a project is found.
     - [ ] Implement a Bubbletea command to start the background Goroutine on `Init`.
     - [ ] Implement a `ScanFinishedMsg` to stop all indicators.

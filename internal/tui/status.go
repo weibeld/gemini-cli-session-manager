@@ -45,6 +45,7 @@ type projectView struct {
 	Path     string
 	IsOrphan bool
 	Sessions []scanner.Session
+	IsScanning bool
 }
 
 type Model struct {
@@ -54,34 +55,72 @@ type Model struct {
 	Width    int
 	Height   int
 	Err      error
+	
+	scanner  *scanner.Scanner
+	registry *registry.Registry
 }
 
-func NewModel(scanned []scanner.ProjectData, reg *registry.Registry) Model {
+// Internal message to carry the channel along with the result
+type resolutionPacket struct {
+	res scanner.Resolution
+	ch  <-chan scanner.Resolution
+}
+
+type ScanFinishedMsg struct{}
+
+func NewModel(scanned []scanner.ProjectData, reg *registry.Registry, sc *scanner.Scanner) Model {
 	var projects []projectView
 	for _, p := range scanned {
 		path, isOrphan, err := reg.GetProjectPath(p.ID)
 		if err != nil {
-			path = p.ID
-			if len(path) > 12 {
-				path = path[:12] + "..."
-			}
+			path = p.ID // Fallback to ID
 		}
 		projects = append(projects, projectView{
 			ID:       p.ID,
 			Path:     path,
 			IsOrphan: isOrphan,
 			Sessions: p.Sessions,
+			IsScanning: path == p.ID, // Mark as scanning if unresolved
 		})
 	}
 
 	return Model{
 		Projects: projects,
 		Selected: 0,
+		scanner:  sc,
+		registry: reg,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return m.startScanningCmd()
+}
+
+func (m Model) startScanningCmd() tea.Cmd {
+	var unknownIDs []string
+	for _, p := range m.Projects {
+		if p.IsScanning {
+			unknownIDs = append(unknownIDs, p.ID)
+		}
+	}
+
+	if len(unknownIDs) == 0 {
+		return nil
+	}
+
+	c := m.scanner.ResolveBackground(unknownIDs)
+
+	return func() tea.Msg {
+		return waitForResolution(c)
+	}
+}
+
+func waitForResolution(c <-chan scanner.Resolution) tea.Msg {
+	res, ok := <-c
+	if !ok {
+		return ScanFinishedMsg{}
+	}
+	return resolutionPacket{res, c}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -105,6 +144,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
 		m.Height = msg.Height
+
+	case resolutionPacket:
+		// Update model
+		for i, p := range m.Projects {
+			if p.ID == msg.res.Hash {
+				m.Projects[i].Path = msg.res.Path
+				m.Projects[i].IsOrphan = false
+				m.Projects[i].IsScanning = false
+				
+				// Auto-save (Persistence Task)
+				m.registry.AddProject(msg.res.Hash, msg.res.Path)
+				_ = m.registry.Save()
+				break
+			}
+		}
+		// Continue listening
+		return m, func() tea.Msg {
+			return waitForResolution(msg.ch)
+		}
+
+	case ScanFinishedMsg:
+		// Turn off scanning indicators for any that remain unresolved
+		for i := range m.Projects {
+			m.Projects[i].IsScanning = false
+		}
 	}
 
 	return m, nil
@@ -115,7 +179,6 @@ func (m Model) View() string {
 		return "No projects found in ~/.gemini/tmp"
 	}
 
-	// Sidebar: Projects
 	var sidebar strings.Builder
 	sidebar.WriteString(titleStyle.Render("Projects") + "\n\n")
 
@@ -129,19 +192,23 @@ func (m Model) View() string {
 		if m.Selected == i {
 			style = style.Foreground(special)
 		}
-		if p.IsOrphan {
-			style = style.Inherit(orphanStyle)
-		}
-
+		
 		label := p.Path
-		if p.IsOrphan {
+		
+		// Logic for display
+		if p.IsScanning {
+			label += " ..." // Indicator
+		} else if p.IsOrphan || p.Path == p.ID {
+			style = style.Inherit(orphanStyle)
+			if len(label) > 12 && p.Path == p.ID {
+				label = label[:12] + "..."
+			}
 			label += " [Orphan]"
 		}
 
 		sidebar.WriteString(fmt.Sprintf("%s%s\n", cursor, style.Render(label)))
 	}
 
-	// Main: Sessions
 	var main strings.Builder
 	if m.Selected < len(m.Projects) {
 		p := m.Projects[m.Selected]
