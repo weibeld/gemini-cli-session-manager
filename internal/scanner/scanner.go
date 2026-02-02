@@ -1,8 +1,11 @@
 package scanner
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,6 +24,12 @@ type Session struct {
 type ProjectData struct {
 	ID       string
 	Sessions []Session
+}
+
+// Resolution represents a found project mapping.
+type Resolution struct {
+	Hash string
+	Path string
 }
 
 // Scanner handles discovery of Gemini sessions.
@@ -73,7 +82,6 @@ func (s *Scanner) Scan() ([]ProjectData, error) {
 		project := ProjectData{ID: projectID}
 		sessions, err := s.scanSessions(filepath.Join(s.RootDir, projectID, "chats"))
 		if err != nil {
-			// Log error or handle as needed, for now we just skip or partial return
 			continue
 		}
 		project.Sessions = sessions
@@ -81,6 +89,110 @@ func (s *Scanner) Scan() ([]ProjectData, error) {
 	}
 
 	return projects, nil
+}
+
+// ResolveBackground starts a 4-tier scan to resolve project hashes to paths.
+// It returns a channel that emits resolutions as they are found.
+func (s *Scanner) ResolveBackground(unknownIDs []string) <-chan Resolution {
+	out := make(chan Resolution)
+	go func() {
+		defer close(out)
+
+		targets := make(map[string]bool)
+		for _, id := range unknownIDs {
+			targets[id] = true
+		}
+
+		if len(targets) == 0 {
+			return
+		}
+
+		visited := make(map[string]bool)
+		home, _ := os.UserHomeDir()
+
+		// Tier 1: Desktop
+		s.scanTier(filepath.Join(home, "Desktop"), targets, visited, out)
+		if len(targets) == 0 {
+			return
+		}
+
+		// Tier 2: Home
+		s.scanTier(home, targets, visited, out)
+		if len(targets) == 0 {
+			return
+		}
+
+		// Tier 3: External Common
+		externalCommon := []string{"/opt", "/var/www", "/usr/local/src", "/srv"}
+		for _, path := range externalCommon {
+			s.scanTier(path, targets, visited, out)
+			if len(targets) == 0 {
+				return
+			}
+		}
+
+		// Tier 4: Root
+		s.scanTier("/", targets, visited, out)
+	}()
+	return out
+}
+
+var ignoreDirs = map[string]bool{
+	"node_modules": true,
+	".git":         true,
+	".npm":         true,
+	".cache":       true,
+	".gemini":      true,
+	".vscode":      true,
+	".idea":        true,
+	"go":           true,
+	"Library":      true,
+}
+
+func (s *Scanner) scanTier(root string, targets map[string]bool, visited map[string]bool, out chan<- Resolution) {
+	if visited[root] {
+		return
+	}
+
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return filepath.SkipDir
+		}
+
+		if visited[path] {
+			return filepath.SkipDir
+		}
+
+		if d.IsDir() {
+			name := d.Name()
+			if ignoreDirs[name] || (strings.HasPrefix(name, ".") && name != ".") {
+				visited[path] = true
+				return filepath.SkipDir
+			}
+
+			// Compute and check hash
+			h := s.hashPath(path)
+			if targets[h] {
+				out <- Resolution{Hash: h, Path: path}
+				delete(targets, h)
+				if len(targets) == 0 {
+					return fmt.Errorf("all resolved") // Shortcut to stop walking
+				}
+			}
+		}
+
+		visited[path] = true
+		return nil
+	})
+}
+
+func (s *Scanner) hashPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	hash := sha256.Sum256([]byte(abs))
+	return hex.EncodeToString(hash[:])
 }
 
 func (s *Scanner) scanSessions(chatsDir string) ([]Session, error) {
@@ -105,7 +217,6 @@ func (s *Scanner) scanSessions(chatsDir string) ([]Session, error) {
 			continue
 		}
 
-		// Since a session can have multiple files (sub-agents), we merge them.
 		if existing, ok := sessionMap[session.ID]; ok {
 			existing.MessageCount += session.MessageCount
 			if session.LastUpdate.After(existing.LastUpdate) {
@@ -121,7 +232,6 @@ func (s *Scanner) scanSessions(chatsDir string) ([]Session, error) {
 		sessions = append(sessions, *sess)
 	}
 
-	// Sort sessions by last update descending
 	sort.Slice(sessions, func(i, j int) bool {
 		return sessions[i].LastUpdate.After(sessions[j].LastUpdate)
 	})
@@ -140,7 +250,6 @@ func (s *Scanner) parseSessionFile(path string) (Session, error) {
 		return Session{}, err
 	}
 
-	// Skip unexpectedly large files (> 10MB)
 	if info.Size() > 10*1024*1024 {
 		return Session{}, fmt.Errorf("file too large: %s", path)
 	}
