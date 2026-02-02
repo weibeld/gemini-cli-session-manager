@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -40,11 +41,19 @@ func NewScanner() (*Scanner, error) {
 
 // Scan discovery all projects and their sessions.
 func (s *Scanner) Scan() ([]ProjectData, error) {
-	entries, err := os.ReadDir(s.RootDir)
+	info, err := os.Stat(s.RootDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory", s.RootDir)
+	}
+
+	entries, err := os.ReadDir(s.RootDir)
+	if err != nil {
 		return nil, err
 	}
 
@@ -126,17 +135,17 @@ type rawSession struct {
 }
 
 func (s *Scanner) parseSessionFile(path string) (Session, error) {
-	data, err := os.ReadFile(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		return Session{}, err
 	}
 
-	var raw rawSession
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return Session{}, err
+	// Skip unexpectedly large files (> 10MB)
+	if info.Size() > 10*1024*1024 {
+		return Session{}, fmt.Errorf("file too large: %s", path)
 	}
 
-	info, err := os.Stat(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return Session{}, err
 	}

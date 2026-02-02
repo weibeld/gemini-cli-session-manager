@@ -16,7 +16,7 @@
     - [ ] Implement parsing of `session-*.json` to extract metadata (ID, count, time).
     - [ ] Correlate scanned hashes with the Registry to resolve names.
 
-## Phase 2: CLI & TUI Implementation
+## Phase 2: CLI & TUI Implementation [checkpoint: 2ff10e6]
 - [x] Task: Setup `geminictl status` command 2185954
     - [ ] Use Cobra to create the `status` command entry point.
 - [x] Task: Build TUI Model (Bubbletea) f4e42d8
@@ -30,7 +30,7 @@
     - [ ] Pass data into the Bubbletea model.
 
 ## Phase 3: Polish & Verification
-- [ ] Task: Handle Edge Cases
+- [~] Task: Handle Edge Cases
     - [ ] Verify behavior when `~/.gemini/tmp` is empty.
     - [ ] Verify behavior when `projects.json` is missing.
     - [ ] Verify behavior with corrupt session files.

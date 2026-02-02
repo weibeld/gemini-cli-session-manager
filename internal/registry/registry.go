@@ -1,11 +1,24 @@
 package registry
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 )
+
+// CalculateProjectID returns the SHA-256 hash of the absolute path.
+func CalculateProjectID(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.Sum256([]byte(abs))
+	return hex.EncodeToString(hash[:]), nil
+}
 
 // Project represents a Gemini CLI project mapping.
 type Project struct {

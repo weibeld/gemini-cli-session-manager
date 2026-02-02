@@ -37,6 +37,21 @@ var statusCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		// Auto-register current directory if it matches a scanned project
+		cwd, err := os.Getwd()
+		if err == nil {
+			currentID, err := registry.CalculateProjectID(cwd)
+			if err == nil {
+				for _, p := range projects {
+					if p.ID == currentID {
+						reg.AddProject(currentID, cwd)
+						_ = reg.Save() // Ignore error on auto-save
+						break
+					}
+				}
+			}
+		}
+
 		m := tui.NewModel(projects, reg)
 		p := tea.NewProgram(m, tea.WithAltScreen())
 

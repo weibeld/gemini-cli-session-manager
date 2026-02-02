@@ -61,7 +61,10 @@ func NewModel(scanned []scanner.ProjectData, reg *registry.Registry) Model {
 	for _, p := range scanned {
 		path, isOrphan, err := reg.GetProjectPath(p.ID)
 		if err != nil {
-			path = p.ID // Fallback to ID if not in registry
+			path = p.ID
+			if len(path) > 12 {
+				path = path[:12] + "..."
+			}
 		}
 		projects = append(projects, projectView{
 			ID:       p.ID,
