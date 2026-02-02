@@ -1,6 +1,8 @@
 # Product Guidelines
 
 ## Visual Identity & UX
+- **Self-Explaining Interface:** A primary focus is on the tool being entirely self-explaining. A user should be able to grasp the full scope and usage of the tool naturally through a single entry point, without needing to consult external documentation or complex help flags.
+- **Intuitive Re-entry:** The design should ensure that a user returning after several months can immediately "drop back in" and use the tool effectively, with its functionality remaining evident and logical.
 - **Minimalist Aesthetic:** CLI output should be clean and uncluttered. Use plain text by default, with sparing use of colour and emojis to highlight status or hierarchy.
 - **Interactivity for Productivity:** While output is minimalist, the tool should offer rich interactive features when managing data. This includes:
     - Fuzzy search for projects and sessions.

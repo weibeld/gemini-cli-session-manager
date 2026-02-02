@@ -6,6 +6,9 @@ A session manager for Gemini CLI. The user will provide details on how Gemini CL
 ## Vision
 `geminictl` is a CLI utility designed to provide observability and management capabilities for Gemini CLI sessions and projects. It bridges the gap between the opaque storage mechanism of Gemini CLI (`~/.gemini/tmp`) and the user's need to understand their active contexts, creating a transparent layer for session inspection.
 
+## Project Philosophy
+- **Comprehensive Observability:** The tool must provide a complete overview of the Gemini CLI project and session landscape by default. This includes identifying and displaying inconsistencies, such as orphaned project data (data for directories that no longer exist), to ensure the user has total visibility into what is stored on their system.
+
 ## Core Concepts
 - **Project:** A local directory where Gemini CLI is utilized. The Project ID is the SHA-256 hash of the directory's absolute path.
 - **Session:** A distinct interaction context within a project. Sessions are strictly local to their parent project.
