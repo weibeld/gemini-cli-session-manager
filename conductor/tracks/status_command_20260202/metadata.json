@@ -1,0 +1,8 @@
+{
+  "track_id": "status_command_20260202",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-02-02T00:00:00Z",
+  "updated_at": "2026-02-02T00:00:00Z",
+  "description": "Implement the project registry, session scanning, and the TUI status view, ensuring it correctly identifies and displays both active and orphaned projects."
+}
