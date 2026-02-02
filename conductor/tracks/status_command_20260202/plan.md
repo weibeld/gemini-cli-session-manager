@@ -30,10 +30,10 @@
     - [ ] Pass data into the Bubbletea model.
 
 ## Phase 3: Polish & Verification
-- [~] Task: Handle Edge Cases
+- [x] Task: Handle Edge Cases e6f8746
     - [ ] Verify behavior when `~/.gemini/tmp` is empty.
     - [ ] Verify behavior when `projects.json` is missing.
     - [ ] Verify behavior with corrupt session files.
-- [ ] Task: Manual Verification
+- [~] Task: Manual Verification
     - [ ] Run `geminictl status` and verify output matches `spec.md`.
     - [ ] Test navigation and quitting.

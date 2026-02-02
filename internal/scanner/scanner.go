@@ -150,6 +150,11 @@ func (s *Scanner) parseSessionFile(path string) (Session, error) {
 		return Session{}, err
 	}
 
+	var raw rawSession
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return Session{}, err
+	}
+
 	return Session{
 		ID:           raw.SessionID,
 		MessageCount: len(raw.Messages),
