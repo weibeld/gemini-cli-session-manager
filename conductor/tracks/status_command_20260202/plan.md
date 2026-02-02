@@ -10,14 +10,14 @@
     - [ ] Define `Registry` struct and JSON schema.
     - [ ] Implement `LoadRegistry` and `SaveRegistry` functions.
     - [ ] Implement logic to check if a project path still exists (orphan detection).
-- [~] Task: Implement Session Scanning
+- [x] Task: Implement Session Scanning ef4d933
     - [ ] Define `Session` and `Project` domain models.
     - [ ] Implement `ScanGeminiTmp` function to walk `~/.gemini/tmp`.
     - [ ] Implement parsing of `session-*.json` to extract metadata (ID, count, time).
     - [ ] Correlate scanned hashes with the Registry to resolve names.
 
 ## Phase 2: CLI & TUI Implementation
-- [ ] Task: Setup `geminictl status` command
+- [~] Task: Setup `geminictl status` command
     - [ ] Use Cobra to create the `status` command entry point.
 - [ ] Task: Build TUI Model (Bubbletea)
     - [ ] Define the Bubbletea `Model` struct.
