@@ -1,12 +1,12 @@
 # Implementation Plan - Build `geminictl status`
 
 ## Phase 1: Scaffolding & Core Logic
-- [~] Task: Initialize Go project
+- [x] Task: Initialize Go project c86baab
     - [ ] Run `go mod init`
     - [ ] Set up project structure (`cmd/`, `internal/`, `pkg/`)
     - [ ] Install Cobra: `go get -u github.com/spf13/cobra`
     - [ ] Install Bubbletea: `go get -u github.com/charmbracelet/bubbletea`
-- [ ] Task: Implement Project Registry
+- [~] Task: Implement Project Registry
     - [ ] Define `Registry` struct and JSON schema.
     - [ ] Implement `LoadRegistry` and `SaveRegistry` functions.
     - [ ] Implement logic to check if a project path still exists (orphan detection).
