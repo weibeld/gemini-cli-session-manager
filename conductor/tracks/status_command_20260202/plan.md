@@ -17,9 +17,9 @@
     - [ ] Correlate scanned hashes with the Registry to resolve names.
 
 ## Phase 2: CLI & TUI Implementation
-- [~] Task: Setup `geminictl status` command
+- [x] Task: Setup `geminictl status` command 2185954
     - [ ] Use Cobra to create the `status` command entry point.
-- [ ] Task: Build TUI Model (Bubbletea)
+- [~] Task: Build TUI Model (Bubbletea)
     - [ ] Define the Bubbletea `Model` struct.
     - [ ] Implement `Init`, `Update`, and `View` methods.
     - [ ] Implement Project list view.
