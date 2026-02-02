@@ -2,13 +2,16 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/bubbles/spinner"
 	"geminictl/internal/registry"
 	"geminictl/internal/scanner"
+	"sort"
 )
 
 // Style definitions
@@ -19,7 +22,7 @@ var (
 	warning   = lipgloss.AdaptiveColor{Light: "#FF0000", Dark: "#FF5555"}
 
 	listStyle = lipgloss.NewStyle().
-		MarginRight(2).
+		MarginRight(1).
 		Padding(1).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(subtle)
@@ -38,13 +41,36 @@ var (
 	orphanStyle = lipgloss.NewStyle().
 		Foreground(warning).
 		Italic(true)
+
+	orphanTagStyle = lipgloss.NewStyle().
+			Foreground(warning).
+			Bold(true)
 )
 
+func collapseHome(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if strings.HasPrefix(path, home) {
+		return "~" + strings.TrimPrefix(path, home)
+	}
+	return path
+}
+
+func truncateMiddle(s string, max int) string {
+	if len(s) <= max || max < 5 {
+		return s
+	}
+	half := (max - 3) / 2
+	return s[:half] + "..." + s[len(s)-half:]
+}
+
 type projectView struct {
-	ID       string
-	Path     string
-	IsOrphan bool
-	Sessions []scanner.Session
+	ID         string
+	Path       string
+	IsOrphan   bool
+	Sessions   []scanner.Session
 	IsScanning bool
 }
 
@@ -55,9 +81,10 @@ type Model struct {
 	Width    int
 	Height   int
 	Err      error
-	
+
 	scanner  *scanner.Scanner
 	registry *registry.Registry
+	spinner  spinner.Model
 }
 
 // Internal message to carry the channel along with the result
@@ -76,24 +103,65 @@ func NewModel(scanned []scanner.ProjectData, reg *registry.Registry, sc *scanner
 			path = p.ID // Fallback to ID
 		}
 		projects = append(projects, projectView{
-			ID:       p.ID,
-			Path:     path,
-			IsOrphan: isOrphan,
-			Sessions: p.Sessions,
+			ID:         p.ID,
+			Path:       path,
+			IsOrphan:   isOrphan,
+			Sessions:   p.Sessions,
 			IsScanning: path == p.ID, // Mark as scanning if unresolved
 		})
 	}
 
-	return Model{
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(highlight)
+
+	m := Model{
 		Projects: projects,
 		Selected: 0,
 		scanner:  sc,
 		registry: reg,
+		spinner:  s,
+	}
+	m.sortProjects()
+	return m
+}
+
+func (m *Model) sortProjects() {
+	// Remember currently selected project ID
+	var selectedID string
+	if len(m.Projects) > 0 {
+		selectedID = m.Projects[m.Selected].ID
+	}
+	var cursorID string
+	if len(m.Projects) > 0 {
+		cursorID = m.Projects[m.Cursor].ID
+	}
+
+	sort.Slice(m.Projects, func(i, j int) bool {
+		return m.Projects[i].Path < m.Projects[j].Path
+	})
+
+	// Restore selection and cursor positions
+	if selectedID != "" {
+		for i, p := range m.Projects {
+			if p.ID == selectedID {
+				m.Selected = i
+				break
+			}
+		}
+	}
+	if cursorID != "" {
+		for i, p := range m.Projects {
+			if p.ID == cursorID {
+				m.Cursor = i
+				break
+			}
+		}
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return m.startScanningCmd()
+	return tea.Batch(m.spinner.Tick, m.startScanningCmd())
 }
 
 func (m Model) startScanningCmd() tea.Cmd {
@@ -124,6 +192,7 @@ func waitForResolution(c <-chan scanner.Resolution) tea.Msg {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -145,6 +214,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Width = msg.Width
 		m.Height = msg.Height
 
+	case spinner.TickMsg:
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
 	case resolutionPacket:
 		// Update model
 		for i, p := range m.Projects {
@@ -152,13 +225,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Projects[i].Path = msg.res.Path
 				m.Projects[i].IsOrphan = false
 				m.Projects[i].IsScanning = false
-				
+
 				// Auto-save (Persistence Task)
 				m.registry.AddProject(msg.res.Hash, msg.res.Path)
 				_ = m.registry.Save()
 				break
 			}
 		}
+		m.sortProjects()
 		// Continue listening
 		return m, func() tea.Msg {
 			return waitForResolution(msg.ch)
@@ -174,13 +248,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) isScanningGlobal() bool {
+	for _, p := range m.Projects {
+		if p.IsScanning {
+			return true
+		}
+	}
+	return false
+}
+
 func (m Model) View() string {
 	if len(m.Projects) == 0 {
 		return "No projects found in ~/.gemini/tmp"
 	}
 
+	// Calculate widths: 50/50 split
+	sidebarWidth := (m.Width / 2) - 2
+	mainWidth := m.Width - sidebarWidth - 6
+
 	var sidebar strings.Builder
-	sidebar.WriteString(titleStyle.Render("Projects") + "\n\n")
+	sidebar.WriteString(titleStyle.Render("Projects") + "\n")
+	if m.isScanningGlobal() {
+		text := "Resolving directories... " + m.spinner.View()
+		// Right-align the scanning indicator within the sidebar width
+		padding := sidebarWidth - lipgloss.Width(text) - 4
+		if padding < 0 {
+			padding = 0
+		}
+		sidebar.WriteString(strings.Repeat(" ", padding) + lipgloss.NewStyle().Foreground(subtle).Render(text) + "\n")
+	} else {
+		sidebar.WriteString("\n")
+	}
 
 	for i, p := range m.Projects {
 		cursor := "  "
@@ -192,27 +290,35 @@ func (m Model) View() string {
 		if m.Selected == i {
 			style = style.Foreground(special)
 		}
-		
-		label := p.Path
-		
-		// Logic for display
+
+		displayPath := collapseHome(p.Path)
+
+		// Available width for path string
+		// Subtract: cursor(2) + space(1) + margin/padding/borders
+		availableWidth := sidebarWidth - 6
 		if p.IsScanning {
-			label += " ..." // Indicator
-		} else if p.IsOrphan || p.Path == p.ID {
-			style = style.Inherit(orphanStyle)
-			if len(label) > 12 && p.Path == p.ID {
-				label = label[:12] + "..."
-			}
-			label += " [Orphan]"
+			availableWidth -= 2 // space for spinner
+		}
+		if (p.IsOrphan || p.Path == p.ID) && !p.IsScanning {
+			availableWidth -= 9 // space for " [Orphan]"
 		}
 
-		sidebar.WriteString(fmt.Sprintf("%s%s\n", cursor, style.Render(label)))
+		displayPath = truncateMiddle(displayPath, availableWidth)
+
+		suffix := ""
+		if p.IsScanning {
+			suffix = " " + m.spinner.View()
+		} else if p.IsOrphan || p.Path == p.ID {
+			suffix = " " + orphanTagStyle.Render("[Orphan]")
+		}
+
+		sidebar.WriteString(fmt.Sprintf("%s%s%s\n", cursor, style.Render(displayPath), suffix))
 	}
 
 	var main strings.Builder
 	if m.Selected < len(m.Projects) {
 		p := m.Projects[m.Selected]
-		main.WriteString(titleStyle.Render(fmt.Sprintf("Sessions for %s", p.Path)) + "\n\n")
+		main.WriteString(titleStyle.Render(fmt.Sprintf("Sessions for %s", collapseHome(p.Path))) + "\n\n")
 
 		if len(p.Sessions) == 0 {
 			main.WriteString("No sessions found.")
@@ -231,10 +337,11 @@ func (m Model) View() string {
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top,
-		listStyle.Render(sidebar.String()),
-		detailsStyle.Render(main.String()),
+		listStyle.Width(sidebarWidth).Render(sidebar.String()),
+		detailsStyle.Width(mainWidth).Render(main.String()),
 	)
 }
+
 
 func formatRelativeTime(t time.Time) string {
 	duration := time.Since(t)

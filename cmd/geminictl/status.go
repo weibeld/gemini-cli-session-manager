@@ -11,6 +11,8 @@ import (
 	"geminictl/internal/tui"
 )
 
+var resetRegistry bool
+
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show the status of Gemini CLI projects and sessions",
@@ -20,9 +22,15 @@ var statusCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error initializing registry: %v\n", err)
 			os.Exit(1)
 		}
-		if err := reg.Load(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading registry: %v\n", err)
-			os.Exit(1)
+
+		if resetRegistry {
+			reg.Clear()
+			_ = reg.Save()
+		} else {
+			if err := reg.Load(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error loading registry: %v\n", err)
+				os.Exit(1)
+			}
 		}
 
 		scan, err := scanner.NewScanner()
@@ -52,7 +60,7 @@ var statusCmd = &cobra.Command{
 			}
 		}
 
-		m := tui.NewModel(projects, reg)
+		m := tui.NewModel(projects, reg, scan)
 		p := tea.NewProgram(m, tea.WithAltScreen())
 
 		if _, err := p.Run(); err != nil {
@@ -63,5 +71,6 @@ var statusCmd = &cobra.Command{
 }
 
 func init() {
+	statusCmd.Flags().BoolVar(&resetRegistry, "reset-registry", false, "Clear and rebuild the project registry")
 	rootCmd.AddCommand(statusCmd)
 }

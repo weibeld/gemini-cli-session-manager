@@ -95,3 +95,8 @@ func (r *Registry) AddProject(id, path string) {
 	}
 	r.Projects = append(r.Projects, Project{ID: id, Path: path})
 }
+
+// Clear removes all projects from the registry.
+func (r *Registry) Clear() {
+	r.Projects = []Project{}
+}
