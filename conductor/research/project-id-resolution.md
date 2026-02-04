@@ -38,3 +38,8 @@ Based on POC benchmarks, the following multi-tier scanning strategy is recommend
 - **Auto-Scan:** On startup (or via background goroutine), run **Tier 1 and Tier 2**. This provides near-instant resolution for the vast majority of users.
 - **Manual Scan:** Provide a UI command (e.g., "Deep Scan") to trigger Tiers 3 and 4 if unresolved projects remain.
 - **Registry:** Persist all resolved paths to `projects.json` to prevent re-scanning.
+
+## External Resources
+- **Reference Implementation:** [agent-sessions](https://github.com/jazzyalex/agent-sessions)
+    - Open-source GUI for session management across various coding agents.
+    - **Usage:** Consult this repository for implementation strategies, particularly for challenges like **reverse-resolving Project IDs to directory names**.

@@ -1,0 +1,8 @@
+{
+  "track_id": "registry_optimization_20260202",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-02-02T00:00:00Z",
+  "updated_at": "2026-02-02T00:00:00Z",
+  "description": "Optimize cache persistence to include unlocated projects, validate existing paths on startup (orphaned detection), and enhance UI with hash details."
+}

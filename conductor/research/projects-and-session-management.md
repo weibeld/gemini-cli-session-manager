@@ -1,6 +1,4 @@
-# Gemini CLI Internals & Session Management
-
-*Notes provided by user on 2026-02-02.*
+# Gemini CLI Project and Session Management
 
 ## Storage & Structure
 - **Root Storage:** Gemini CLI maintains projects and sessions in `~/.gemini/tmp`.
@@ -40,8 +38,3 @@
 - The Project ID (hash of the *original* path) is not updated.
 - `gemini --list-projects` in the new directory will not show the previous sessions (as they are tied to the old path's hash).
 - `geminictl` must identify these as "orphans" (projects where the hashed path no longer exists) to provide a complete view of the system, including inconsistencies.
-
-## External Resources
-- **Reference Implementation:** [agent-sessions](https://github.com/jazzyalex/agent-sessions)
-    - Open-source GUI for session management across various coding agents.
-    - **Usage:** Consult this repository for implementation strategies, particularly for challenges like **reverse-resolving Project IDs to directory names**.
