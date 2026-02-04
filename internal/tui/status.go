@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/bubbles/spinner"
-	"geminictl/internal/registry"
+	"geminictl/internal/cache"
 	"geminictl/internal/scanner"
 	"sort"
 )
@@ -83,7 +83,7 @@ type Model struct {
 	Err      error
 
 	scanner  *scanner.Scanner
-	registry *registry.Registry
+	cache    *cache.Cache
 	spinner  spinner.Model
 }
 
@@ -95,19 +95,19 @@ type resolutionPacket struct {
 
 type ScanFinishedMsg struct{}
 
-func NewModel(scanned []scanner.ProjectData, reg *registry.Registry, sc *scanner.Scanner) Model {
+func NewModel(scanned []scanner.ProjectData, c *cache.Cache, sc *scanner.Scanner) Model {
 	var projects []projectView
 	for _, p := range scanned {
-		path, isOrphan, err := reg.GetProjectPath(p.ID)
-		if err != nil {
-			path = p.ID // Fallback to ID
+		path, ok := c.Get(p.ID)
+		if !ok {
+			path = p.ID // Initially just the ID
 		}
 		projects = append(projects, projectView{
 			ID:         p.ID,
 			Path:       path,
-			IsOrphan:   isOrphan,
+			IsOrphan:   false, // Initial state, will be updated in Phase 2
 			Sessions:   p.Sessions,
-			IsScanning: path == p.ID, // Mark as scanning if unresolved
+			IsScanning: !ok, // Mark as scanning if not in cache
 		})
 	}
 
@@ -119,7 +119,7 @@ func NewModel(scanned []scanner.ProjectData, reg *registry.Registry, sc *scanner
 		Projects: projects,
 		Selected: 0,
 		scanner:  sc,
-		registry: reg,
+		cache:    c,
 		spinner:  s,
 	}
 	m.sortProjects()
@@ -127,7 +127,6 @@ func NewModel(scanned []scanner.ProjectData, reg *registry.Registry, sc *scanner
 }
 
 func (m *Model) sortProjects() {
-	// Remember currently selected project ID
 	var selectedID string
 	if len(m.Projects) > 0 {
 		selectedID = m.Projects[m.Selected].ID
@@ -141,7 +140,6 @@ func (m *Model) sortProjects() {
 		return m.Projects[i].Path < m.Projects[j].Path
 	})
 
-	// Restore selection and cursor positions
 	if selectedID != "" {
 		for i, p := range m.Projects {
 			if p.ID == selectedID {
@@ -219,29 +217,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case resolutionPacket:
-		// Update model
 		for i, p := range m.Projects {
 			if p.ID == msg.res.Hash {
 				m.Projects[i].Path = msg.res.Path
 				m.Projects[i].IsOrphan = false
 				m.Projects[i].IsScanning = false
 
-				// Auto-save (Persistence Task)
-				m.registry.AddProject(msg.res.Hash, msg.res.Path)
-				_ = m.registry.Save()
+				m.cache.Set(msg.res.Hash, msg.res.Path)
+				_ = m.cache.Save()
 				break
 			}
 		}
 		m.sortProjects()
-		// Continue listening
 		return m, func() tea.Msg {
 			return waitForResolution(msg.ch)
 		}
 
 	case ScanFinishedMsg:
-		// Turn off scanning indicators for any that remain unresolved
 		for i := range m.Projects {
-			m.Projects[i].IsScanning = false
+			if m.Projects[i].IsScanning {
+				m.Projects[i].IsScanning = false
+				// Save empty path for Unlocated (Persistence Task)
+				m.cache.Set(m.Projects[i].ID, "")
+				_ = m.cache.Save()
+			}
 		}
 	}
 
@@ -262,7 +261,6 @@ func (m Model) View() string {
 		return "No projects found in ~/.gemini/tmp"
 	}
 
-	// Calculate widths: 50/50 split
 	sidebarWidth := (m.Width / 2) - 2
 	mainWidth := m.Width - sidebarWidth - 6
 
@@ -270,7 +268,6 @@ func (m Model) View() string {
 	sidebar.WriteString(titleStyle.Render("Projects") + "\n")
 	if m.isScanningGlobal() {
 		text := "Resolving directories... " + m.spinner.View()
-		// Right-align the scanning indicator within the sidebar width
 		padding := sidebarWidth - lipgloss.Width(text) - 4
 		if padding < 0 {
 			padding = 0
@@ -292,15 +289,16 @@ func (m Model) View() string {
 		}
 
 		displayPath := collapseHome(p.Path)
+		if displayPath == p.ID && len(displayPath) > 12 {
+			displayPath = displayPath[:12] + "..."
+		}
 
-		// Available width for path string
-		// Subtract: cursor(2) + space(1) + margin/padding/borders
 		availableWidth := sidebarWidth - 6
 		if p.IsScanning {
-			availableWidth -= 2 // space for spinner
+			availableWidth -= 2
 		}
 		if (p.IsOrphan || p.Path == p.ID) && !p.IsScanning {
-			availableWidth -= 9 // space for " [Orphan]"
+			availableWidth -= 9
 		}
 
 		displayPath = truncateMiddle(displayPath, availableWidth)
@@ -309,7 +307,7 @@ func (m Model) View() string {
 		if p.IsScanning {
 			suffix = " " + m.spinner.View()
 		} else if p.IsOrphan || p.Path == p.ID {
-			suffix = " " + orphanTagStyle.Render("[Orphan]")
+			suffix = " " + orphanTagStyle.Render("[Orphan]") // Will update to [Unlocated] in Phase 2
 		}
 
 		sidebar.WriteString(fmt.Sprintf("%s%s%s\n", cursor, style.Render(displayPath), suffix))

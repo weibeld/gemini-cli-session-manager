@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
-	"geminictl/internal/registry"
+	"geminictl/internal/cache"
 	"geminictl/internal/scanner"
 	"geminictl/internal/tui"
 )
@@ -17,18 +17,18 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show the status of Gemini CLI projects and sessions",
 	Run: func(cmd *cobra.Command, args []string) {
-		reg, err := registry.NewRegistry()
+		c, err := cache.NewCache()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error initializing registry: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error initializing cache: %v\n", err)
 			os.Exit(1)
 		}
 
 		if resetRegistry {
-			reg.Clear()
-			_ = reg.Save()
+			c.Clear()
+			_ = c.Save()
 		} else {
-			if err := reg.Load(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error loading registry: %v\n", err)
+			if err := c.Load(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error loading cache: %v\n", err)
 				os.Exit(1)
 			}
 		}
@@ -45,22 +45,7 @@ var statusCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// Auto-register current directory if it matches a scanned project
-		cwd, err := os.Getwd()
-		if err == nil {
-			currentID, err := registry.CalculateProjectID(cwd)
-			if err == nil {
-				for _, p := range projects {
-					if p.ID == currentID {
-						reg.AddProject(currentID, cwd)
-						_ = reg.Save() // Ignore error on auto-save
-						break
-					}
-				}
-			}
-		}
-
-		m := tui.NewModel(projects, reg, scan)
+		m := tui.NewModel(projects, c, scan)
 		p := tea.NewProgram(m, tea.WithAltScreen())
 
 		if _, err := p.Run(); err != nil {
@@ -71,6 +56,6 @@ var statusCmd = &cobra.Command{
 }
 
 func init() {
-	statusCmd.Flags().BoolVar(&resetRegistry, "reset-registry", false, "Clear and rebuild the project registry")
+	statusCmd.Flags().BoolVar(&resetRegistry, "reset-registry", false, "Clear and rebuild the project cache")
 	rootCmd.AddCommand(statusCmd)
 }

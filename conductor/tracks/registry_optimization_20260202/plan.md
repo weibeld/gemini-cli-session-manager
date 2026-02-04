@@ -1,12 +1,9 @@
 # Implementation Plan - Cache Optimization & UI
 
 ## Phase 1: Core Refactoring
-- [ ] Task: Rename and Refactor internal/registry
-    - [ ] Rename `internal/registry` to `internal/cache`.
-    - [ ] Simplify data model to `map[string]string` (Hash -> Path).
-    - [ ] Update persistence to load/save this simple map.
-- [ ] Task: Update Dependencies
-    - [ ] Update `cmd/geminictl` and `internal/tui` to use `internal/cache`.
+- [x] Task: Rename and Refactor internal/registry b7e2a06
+- [x] Task: Update Dependencies b7e2a06
+- [x] Task: Remove Auto-Registration Logic b7e2a06
 
 ## Phase 2: Logic & Integrity Checks
 - [ ] Task: Implement Runtime State Derivation
