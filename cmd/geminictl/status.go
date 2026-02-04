@@ -11,29 +11,22 @@ import (
 	"geminictl/internal/tui"
 )
 
-var resetRegistry bool
-
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show the status of Gemini CLI projects and sessions",
 	Run: func(cmd *cobra.Command, args []string) {
-		c, err := cache.NewCache()
+		c, err := cache.NewCache(testbedDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error initializing cache: %v\n", err)
 			os.Exit(1)
 		}
 
-		if resetRegistry {
-			c.Clear()
-			_ = c.Save()
-		} else {
-			if err := c.Load(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error loading cache: %v\n", err)
-				os.Exit(1)
-			}
+		if err := c.Load(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading cache: %v\n", err)
+			os.Exit(1)
 		}
 
-		scan, err := scanner.NewScanner()
+		scan, err := scanner.NewScanner(testbedDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error initializing scanner: %v\n", err)
 			os.Exit(1)
@@ -46,7 +39,6 @@ var statusCmd = &cobra.Command{
 		}
 
 		// --- Integrity Check: Garbage Collection ---
-		// Remove cache entries that are no longer present in ~/.gemini/tmp
 		activeIDs := make(map[string]bool)
 		for _, p := range projects {
 			activeIDs[p.ID] = true
@@ -74,6 +66,5 @@ var statusCmd = &cobra.Command{
 }
 
 func init() {
-	statusCmd.Flags().BoolVar(&resetRegistry, "reset-registry", false, "Clear and rebuild the project cache")
 	rootCmd.AddCommand(statusCmd)
 }

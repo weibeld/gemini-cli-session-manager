@@ -1,7 +1,7 @@
 # Specification: Testbed Infrastructure for Gemini CLI Session Manager
 
 ## Overview
-Establish a reproducible testbed that generates a realistic environment for `geminictl`. This involves a test data generator tool that creates ephemeral Gemini CLI data structures based on the current system path, ensuring that \"Project ID -> Directory Path\" hashing is mathematically valid for verification and isolated from real user data.
+Establish a reproducible testbed that generates a realistic environment for `geminictl`. This involves a standalone testbed tool that creates ephemeral Gemini CLI data structures based on the current system path, ensuring that \"Project ID -> Directory Path\" hashing is mathematically valid for verification and isolated from real user data.
 
 ## Core Features
 
@@ -11,21 +11,23 @@ Establish a reproducible testbed that generates a realistic environment for `gem
     - Project ID calculation (SHA-256 of absolute path).
     - Directory discovery logic (walking the storage root).
     - Session file parsing and writing (JSON marshalling).
-- **Semantics**: Both the main application and the test data generator MUST use this package as their sole interface for interacting with Gemini-managed data.
+- **Semantics**: Both the main application and the testbed tool MUST use this package as their sole interface for interacting with Gemini-managed data.
 
-### 2. Test Data Source (`testdata/src/`)
+### 2. Testbed Configuration (`cmd/testbed/config/`)
 - **templates/**: Session JSON templates containing placeholders (e.g., `{{PROJECT_HASH}}`) for dynamic injection.
-- **config.json**: Defines the test universe, including a list of projects and their associated sessions.
+- **config/default.json**: Defines the test universe, using path types to simulate different resolution states:
+    - **Relative/Absolute Path**: Directory is created (Valid).
+    - **Empty Path**: Virtual path used for hash and directory is NOT created (Unlocated).
 
-### 3. Test Data Generator (`cmd/testgen`)
-- **Function**: Generates a fresh working test environment in `testdata/run/`.
+### 3. Testbed Tool (`bin/testbed`)
+- **Function**: Generates a fresh working test environment at a specified location.
+- **Arguments**: Requires mandatory `--config` (path to config JSON) and `--dir` (target directory) flags.
 - **Logic**:
-    1. **Initialize**: Clear `testdata/run/`.
-    2. **Create Projects**: Create dummy project directories in `testdata/run/projects/`.
-    3. **Calculate Hashes**: Compute SHA-256 hashes of the absolute paths of these directories.
-    4. **Generate Storage**: Create the Gemini CLI structure at `testdata/run/gemini/<HASH>/chats/` using `internal/gemini`.
-    5. **Inject & Write Sessions**: Populate session files by replacing placeholders with the calculated project hashes.
-- **Note**: This tool does NOT generate a `cache.json`. This forces `geminictl` to perform its full resolution and integrity logic during tests.
+    1. **Initialize**: Clears and (re)creates the target directory.
+    2. **Create Projects**: Creates dummy working directories in `workdirs/` for relative paths.
+    3. **Calculate Hashes**: Computes SHA-256 hashes of the absolute paths.
+    4. **Generate Storage**: Creates the Gemini CLI structure at `gemini/<HASH>/chats/` using `internal/gemini`.
+    5. **Inject & Write Sessions**: Populates session files by replacing placeholders with the calculated project hashes.
 
 ### 4. Isolated Mode (`--testbed`)
 - **Flag**: Add a global `--testbed <path>` flag.
@@ -36,9 +38,9 @@ Establish a reproducible testbed that generates a realistic environment for `gem
 
 ### 5. Build & Automation
 - **Makefile Integration**:
-    - `make testrun`: Builds the app, runs `testgen`, and launches `geminictl` in isolated mode.
-- **Playbook**: A documented set of manual steps to verify dynamic integrity logic (renaming folders, deleting data) using the testbed.
+    - `make testbed`: Builds the app and builds the testbed data in the configured directory.
+    - `make testbedrun`: Builds everything and launches `geminictl` in isolated mode against the testbed.
 
 ## Technical Constraints
-- **Path Standardisation**: The generator and `geminictl` must use `filepath.Abs` and consistent path normalisation (no trailing slashes) to ensure hashes match perfectly.
+- **Path Standardisation**: The testbed tool and `geminictl` must use `filepath.Abs` and consistent path normalisation (no trailing slashes) to ensure hashes match perfectly.
 - **Isolation**: No modifications should be made to `~/.gemini/` or `~/.config/geminictl/` when `--testbed` is active.

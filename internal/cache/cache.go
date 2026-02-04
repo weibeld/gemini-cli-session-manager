@@ -1,21 +1,15 @@
 package cache
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
+	"geminictl/internal/gemini"
 	"os"
 	"path/filepath"
 )
 
 // CalculateProjectID returns the SHA-256 hash of the absolute path.
 func CalculateProjectID(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	hash := sha256.Sum256([]byte(abs))
-	return hex.EncodeToString(hash[:]), nil
+	return gemini.HashProjectID(path)
 }
 
 // Cache stores the mapping of project IDs to directory paths.
@@ -24,13 +18,20 @@ type Cache struct {
 	configPath string
 }
 
-// NewCache creates a new Cache instance with the default config path.
-func NewCache() (*Cache, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
+// NewCache creates a new Cache instance. If baseDir is provided, it uses it as the root
+// and looks for cache.json directly in that directory.
+func NewCache(baseDir string) (*Cache, error) {
+	var configPath string
+	if baseDir != "" {
+		configPath = filepath.Join(baseDir, "cache.json")
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		configPath = filepath.Join(home, ".config", "geminictl", "cache.json")
 	}
-	configPath := filepath.Join(home, ".config", "geminictl", "cache.json")
+
 	return &Cache{
 		Data:       make(map[string]string),
 		configPath: configPath,

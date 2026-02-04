@@ -1,32 +1,43 @@
 # Implementation Plan - Testbed Infrastructure
 
 ## Phase 1: Storage Abstraction & Refactoring
-- [ ] Task: Implement `internal/gemini` package
-    - [ ] Move hashing logic to `internal/gemini`.
-    - [ ] Implement directory discovery and session I/O methods.
-- [ ] Task: Refactor Application to use `internal/gemini`
-    - [ ] Update `internal/scanner` to use abstracted discovery logic.
-    - [ ] Update `internal/cache` to use abstracted hashing.
+- [x] Task: Implement `internal/gemini` package b7e2a06
+    - [x] Move hashing logic to `internal/gemini`.
+    - [x] Implement directory discovery and session I/O methods.
+- [x] Task: Refactor Application to use `internal/gemini` b7e2a06
+    - [x] Update `internal/scanner` to use abstracted discovery logic.
+    - [x] Update `internal/cache` to use abstracted hashing.
 
-## Phase 2: Test Data Source & Generator Logic
-- [x] Task: Create Test Data Source
-    - [x] Create `testdata/src/templates/` with session JSONs containing placeholders.
-    - [x] Create `testdata/src/config.json` defining the test scenario (projects, sessions per project).
-- [ ] Task: Implement `cmd/testgen` Tool
-    - [ ] Create `cmd/testgen/main.go` using `internal/gemini`.
-    - [ ] Logic: Read config -> Create project dirs -> Calc Hashes -> Gen Gemini Structure -> Inject Hashes.
+## Phase 2: Testbed Tool & Data Logic
+- [x] Task: Consolidate Testbed Source b7e2a06
+    - [x] Move config and templates into `cmd/testbed/`.
+    - [x] Reorganize configuration into `cmd/testbed/config/default.json`.
+- [x] Task: Implement `cmd/testbed` Tool b7e2a06
+    - [x] Create `cmd/testbed/main.go` using `internal/gemini`.
+    - [x] Implement mandatory flags: `--config` and `--dir`.
+    - [x] Logic: Read config -> Create project dirs -> Calc Hashes -> Gen Gemini Structure -> Inject Hashes.
+    - [x] Handle empty paths to simulate unlocated projects.
 
 ## Phase 3: Application Support
-- [ ] Task: Add Testbed Flag
-    - [ ] Update `cmd/geminictl/root.go` to add global `--testbed <path>` flag.
-    - [ ] Update `internal/scanner` and `internal/cache` constructors to accept custom root paths.
-- [ ] Task: Remove Obsolete Flag
-    - [ ] Remove `--reset-registry` logic and flag from `cmd/geminictl/status.go`.
+- [x] Task: Add Testbed Flag b7e2a06
+    - [x] Update `cmd/geminictl/root.go` to add global `--testbed <path>` flag.
+    - [x] Update `internal/scanner` and `internal/cache` constructors to accept custom root paths.
+- [x] Task: Remove Obsolete Flag b7e2a06
+    - [x] Remove `--reset-registry` logic and flag from `cmd/geminictl/status.go`.
 
 ## Phase 4: Integration & Verification
-- [ ] Task: Update Makefile
-    - [ ] Add `testrun` target: builds app, runs testgen, and launches `geminictl --testbed`.
-- [ ] Task: Final Verification
-    - [ ] Execute `make testrun`.
-    - [ ] Verify TUI correctly identifies and resolves projects within the ephemeral `testdata/run/` environment.
-    - [ ] Task: Conductor - User Manual Verification 'Testbed Integrity' (Protocol in workflow.md)
+- [x] Task: Update Makefile b7e2a06
+    - [x] Add `testbed` and `testbedrun` targets with dynamic path support.
+- [x] Task: Final Verification b7e2a06
+    - [x] Execute `make testbedrun`.
+    - [x] Verify TUI correctly identifies and resolves projects within the isolated testbed.
+    - [x] Task: Conductor - User Manual Verification 'Testbed Integrity' (Protocol in workflow.md)
+
+## Phase 5: Refinement & Research
+- [x] Task: Housekeeping & Terminology b7e2a06
+    - [x] Update `.gitignore` to exclude `testbed/`.
+    - [x] Standardise all naming to 'testbed'.
+- [x] Task: Enhance Gemini Data Model b7e2a06
+    - [x] Update `internal/gemini` with realistic session filenames and expanded JSON struct.
+- [x] Task: Research Testing Automation b7e2a06
+    - [x] Investigate TUI automation and document findings in `conductor/research/testing_automation.md`.

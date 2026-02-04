@@ -1,9 +1,6 @@
 package scanner
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -11,13 +8,15 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"geminictl/internal/gemini"
 )
 
-// Session represents metadata for a single Gemini session.
+// Session metadata for TUI display.
 type Session struct {
-	ID           string    `json:"sessionId"`
-	MessageCount int       `json:"messageCount"`
-	LastUpdate   time.Time `json:"lastUpdate"`
+	ID           string
+	MessageCount int
+	LastUpdate   time.Time
 }
 
 // ProjectData aggregates sessions for a specific project hash.
@@ -37,54 +36,72 @@ type Scanner struct {
 	RootDir string
 }
 
-// NewScanner creates a scanner pointing to the default Gemini tmp directory.
-func NewScanner() (*Scanner, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
+// NewScanner creates a scanner. If baseDir is provided, it uses it as the root
+// and looks for storage in a 'gemini' subdirectory of that path.
+func NewScanner(baseDir string) (*Scanner, error) {
+	var root string
+	if baseDir != "" {
+		root = filepath.Join(baseDir, "gemini")
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		root = filepath.Join(home, ".gemini", "tmp")
 	}
+
 	return &Scanner{
-		RootDir: filepath.Join(home, ".gemini", "tmp"),
+		RootDir: root,
 	}, nil
 }
 
-// Scan discovery all projects and their sessions.
+// Scan discovery all projects and their sessions using the gemini abstraction.
 func (s *Scanner) Scan() ([]ProjectData, error) {
-	info, err := os.Stat(s.RootDir)
+	ids, err := gemini.ListProjectIDs(s.RootDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	if !info.IsDir() {
-		return nil, fmt.Errorf("%s is not a directory", s.RootDir)
-	}
-
-	entries, err := os.ReadDir(s.RootDir)
-	if err != nil {
-		return nil, err
-	}
 
 	var projects []ProjectData
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		projectID := entry.Name()
-		// Basic validation: Project IDs are hex hashes (typically SHA-256)
-		if len(projectID) < 8 {
-			continue
-		}
-
-		project := ProjectData{ID: projectID}
-		sessions, err := s.scanSessions(filepath.Join(s.RootDir, projectID, "chats"))
+	for _, id := range ids {
+		project := ProjectData{ID: id}
+		
+		sessions, err := gemini.ReadSessions(s.RootDir, id)
 		if err != nil {
 			continue
 		}
-		project.Sessions = sessions
+
+		// Aggregate multi-file sessions
+		sessionMap := make(map[string]*Session)
+		for _, sess := range sessions {
+			if existing, ok := sessionMap[sess.ID]; ok {
+				existing.MessageCount += len(sess.Messages)
+				if sess.FileLastUpdate.After(existing.LastUpdate) {
+					existing.LastUpdate = sess.FileLastUpdate
+				}
+			} else {
+				sessionMap[sess.ID] = &Session{
+					ID:           sess.ID,
+					MessageCount: len(sess.Messages),
+					LastUpdate:   sess.FileLastUpdate,
+				}
+			}
+		}
+
+		var projectSessions []Session
+		for _, sess := range sessionMap {
+			projectSessions = append(projectSessions, *sess)
+		}
+
+		// Sort sessions by last update descending
+		sort.Slice(projectSessions, func(i, j int) bool {
+			return projectSessions[i].LastUpdate.After(projectSessions[j].LastUpdate)
+		})
+
+		project.Sessions = projectSessions
 		projects = append(projects, project)
 	}
 
@@ -92,7 +109,6 @@ func (s *Scanner) Scan() ([]ProjectData, error) {
 }
 
 // ResolveBackground starts a 4-tier scan to resolve project hashes to paths.
-// It returns a channel that emits resolutions as they are found.
 func (s *Scanner) ResolveBackground(unknownIDs []string) <-chan Resolution {
 	out := make(chan Resolution)
 	go func() {
@@ -170,13 +186,16 @@ func (s *Scanner) scanTier(root string, targets map[string]bool, visited map[str
 				return filepath.SkipDir
 			}
 
-			// Compute and check hash
-			h := s.hashPath(path)
+			h, err := gemini.HashProjectID(path)
+			if err != nil {
+				return nil
+			}
+			
 			if targets[h] {
 				out <- Resolution{Hash: h, Path: path}
 				delete(targets, h)
 				if len(targets) == 0 {
-					return fmt.Errorf("all resolved") // Shortcut to stop walking
+					return fmt.Errorf("all resolved")
 				}
 			}
 		}
@@ -184,89 +203,4 @@ func (s *Scanner) scanTier(root string, targets map[string]bool, visited map[str
 		visited[path] = true
 		return nil
 	})
-}
-
-func (s *Scanner) hashPath(path string) string {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return ""
-	}
-	hash := sha256.Sum256([]byte(abs))
-	return hex.EncodeToString(hash[:])
-}
-
-func (s *Scanner) scanSessions(chatsDir string) ([]Session, error) {
-	entries, err := os.ReadDir(chatsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	sessionMap := make(map[string]*Session)
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "session-") || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-
-		path := filepath.Join(chatsDir, entry.Name())
-		session, err := s.parseSessionFile(path)
-		if err != nil {
-			continue
-		}
-
-		if existing, ok := sessionMap[session.ID]; ok {
-			existing.MessageCount += session.MessageCount
-			if session.LastUpdate.After(existing.LastUpdate) {
-				existing.LastUpdate = session.LastUpdate
-			}
-		} else {
-			sessionMap[session.ID] = &session
-		}
-	}
-
-	var sessions []Session
-	for _, sess := range sessionMap {
-		sessions = append(sessions, *sess)
-	}
-
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].LastUpdate.After(sessions[j].LastUpdate)
-	})
-
-	return sessions, nil
-}
-
-type rawSession struct {
-	SessionID string `json:"sessionId"`
-	Messages  []any  `json:"messages"`
-}
-
-func (s *Scanner) parseSessionFile(path string) (Session, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return Session{}, err
-	}
-
-	if info.Size() > 10*1024*1024 {
-		return Session{}, fmt.Errorf("file too large: %s", path)
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Session{}, err
-	}
-
-	var raw rawSession
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return Session{}, err
-	}
-
-	return Session{
-		ID:           raw.SessionID,
-		MessageCount: len(raw.Messages),
-		LastUpdate:   info.ModTime(),
-	}, nil
 }

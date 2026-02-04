@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var testbedDir string
+
 var rootCmd = &cobra.Command{
 	Use:   "geminictl",
 	Short: "geminictl is a session manager for Gemini CLI",
@@ -25,5 +27,5 @@ func Execute() {
 }
 
 func init() {
-	// Add global flags if needed
+	rootCmd.PersistentFlags().StringVar(&testbedDir, "testbed", "", "Path to a testbed directory (overrides default storage)")
 }
