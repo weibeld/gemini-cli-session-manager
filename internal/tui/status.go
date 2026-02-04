@@ -25,6 +25,13 @@ const (
 	StatusOrphaned
 )
 
+type Focus int
+
+const (
+	FocusProjects Focus = iota
+	FocusSessions
+)
+
 // Style definitions
 var (
 	subtle    = lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#383838"}
@@ -49,18 +56,33 @@ var (
 			Bold(true).
 			Foreground(highlight)
 
-	orphanTagStyle = lipgloss.NewStyle().
-			Foreground(warning).
-			Bold(true)
-
-	unlocatedTagStyle = lipgloss.NewStyle().
-				Foreground(warning).
-				Bold(true)
-
 	strikethroughStyle = lipgloss.NewStyle().
-				Strikethrough(true).
-				Foreground(subtle)
+				Strikethrough(true)
 )
+
+// UI Helpers
+func renderCursor(focused bool, current bool) string {
+	if focused && current {
+		return lipgloss.NewStyle().Foreground(special).Render("> ")
+	}
+	return "  "
+}
+
+func renderHash(id string) string {
+	shortID := id
+	if len(id) > 8 {
+		shortID = id[:8]
+	}
+	return highlightStyle.Render(fmt.Sprintf("[%s]", shortID))
+}
+
+func getRowStyle(selected bool) lipgloss.Style {
+	style := lipgloss.NewStyle()
+	if selected {
+		style = style.Foreground(special)
+	}
+	return style
+}
 
 func collapseHome(path string) string {
 	home, err := os.UserHomeDir()
@@ -89,12 +111,14 @@ type projectView struct {
 }
 
 type Model struct {
-	Projects []projectView
-	Cursor   int
-	Selected int
-	Width    int
-	Height   int
-	Err      error
+	Projects      []projectView
+	Cursor        int
+	Selected      int
+	SessionCursor int
+	Focus         Focus
+	Width         int
+	Height        int
+	Err           error
 
 	scanner *scanner.Scanner
 	cache   *cache.Cache
@@ -122,7 +146,6 @@ func NewModel(scanned []scanner.ProjectData, c *cache.Cache, sc *scanner.Scanner
 			status = StatusUnlocated
 			path = p.ID
 		} else {
-			// Check if directory exists
 			if _, err := os.Stat(path); os.IsNotExist(err) {
 				status = StatusOrphaned
 			} else {
@@ -145,6 +168,7 @@ func NewModel(scanned []scanner.ProjectData, c *cache.Cache, sc *scanner.Scanner
 	m := Model{
 		Projects: projects,
 		Selected: 0,
+		Focus:    FocusProjects,
 		scanner:  sc,
 		cache:    c,
 		spinner:  s,
@@ -223,16 +247,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return m, tea.Quit
+		case "h", "left", "H":
+			m.Focus = FocusProjects
+		case "l", "right", "L":
+			m.Focus = FocusSessions
 		case "up", "k":
-			if m.Cursor > 0 {
-				m.Cursor--
+			if m.Focus == FocusProjects {
+				if m.Cursor > 0 {
+					m.Cursor--
+					m.Selected = m.Cursor
+					m.SessionCursor = 0
+				}
+			} else {
+				if m.SessionCursor > 0 {
+					m.SessionCursor--
+				}
 			}
 		case "down", "j":
-			if m.Cursor < len(m.Projects)-1 {
-				m.Cursor++
+			if m.Focus == FocusProjects {
+				if m.Cursor < len(m.Projects)-1 {
+					m.Cursor++
+					m.Selected = m.Cursor
+					m.SessionCursor = 0
+				}
+			} else {
+				p := m.Projects[m.Selected]
+				if m.SessionCursor < len(p.Sessions)-1 {
+					m.SessionCursor++
+				}
 			}
 		case "enter", " ":
-			m.Selected = m.Cursor
+			if m.Focus == FocusProjects {
+				m.Selected = m.Cursor
+				m.SessionCursor = 0
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -263,7 +311,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i := range m.Projects {
 			if m.Projects[i].Status == StatusScanning {
 				m.Projects[i].Status = StatusUnlocated
-				// Save empty path for Unlocated
 				m.cache.Set(m.Projects[i].ID, "")
 				_ = m.cache.Save()
 			}
@@ -287,9 +334,9 @@ func (m Model) View() string {
 		return "No projects found in ~/.gemini/tmp"
 	}
 
-	// Calculate widths: 50/50 split
 	sidebarWidth := (m.Width / 2) - 2
 	mainWidth := m.Width - sidebarWidth - 6
+	paneHeight := m.Height - 6
 
 	var sidebar strings.Builder
 	sidebar.WriteString(titleStyle.Render("Projects") + "\n")
@@ -305,32 +352,18 @@ func (m Model) View() string {
 	}
 
 	for i, p := range m.Projects {
-		cursor := "  "
-		if m.Cursor == i {
-			cursor = "> "
-		}
-
-		style := lipgloss.NewStyle()
-		if m.Selected == i {
-			style = style.Foreground(special)
-		}
-
-		displayID := p.ID
-		if len(displayID) > 8 {
-			displayID = displayID[:8]
-		}
-
-		idStr := fmt.Sprintf("(%s) ", displayID)
+		cursor := renderCursor(m.Focus == FocusProjects, m.Cursor == i)
+		style := getRowStyle(m.Selected == i)
+		idStr := renderHash(p.ID) + " "
 		pathStr := collapseHome(p.Path)
 
-		// Determine available width for path
-		availableWidth := sidebarWidth - 6 - len(idStr)
+		availableWidth := sidebarWidth - 6 - lipgloss.Width(idStr)
 		if p.Status == StatusScanning {
 			availableWidth -= 2
 		} else if p.Status == StatusOrphaned {
-			availableWidth -= 11 // " [Orphaned]"
+			availableWidth -= 11
 		} else if p.Status == StatusUnlocated {
-			availableWidth -= 12 // " [Unlocated]"
+			availableWidth -= 12
 		}
 
 		pathStr = truncateMiddle(pathStr, availableWidth)
@@ -338,13 +371,13 @@ func (m Model) View() string {
 		var row string
 		switch p.Status {
 		case StatusScanning:
-			row = fmt.Sprintf("%s%s %s", highlightStyle.Render(idStr), style.Render(pathStr), m.spinner.View())
+			row = fmt.Sprintf("%s%s %s", idStr, style.Render(pathStr), m.spinner.View())
 		case StatusValid:
-			row = fmt.Sprintf("%s%s", highlightStyle.Render(idStr), style.Render(pathStr))
+			row = fmt.Sprintf("%s%s", idStr, style.Render(pathStr))
 		case StatusOrphaned:
-			row = fmt.Sprintf("%s%s %s", highlightStyle.Render(idStr), strikethroughStyle.Render(pathStr), orphanTagStyle.Render("[Orphaned]"))
+			row = fmt.Sprintf("%s%s %s", idStr, style.Inherit(strikethroughStyle).Render(pathStr), style.Render("[Orphaned]"))
 		case StatusUnlocated:
-			row = fmt.Sprintf("%s%s", highlightStyle.Render(idStr), unlocatedTagStyle.Render("[Unlocated]"))
+			row = fmt.Sprintf("%s%s", idStr, style.Render("[Unlocated]"))
 		}
 
 		sidebar.WriteString(fmt.Sprintf("%s%s\n", cursor, row))
@@ -366,22 +399,24 @@ func (m Model) View() string {
 		if len(p.Sessions) == 0 {
 			main.WriteString("No sessions found.")
 		} else {
-			for _, s := range p.Sessions {
-				id := s.ID
-				if len(id) > 8 {
-					id = id[:8]
-				}
-				main.WriteString(fmt.Sprintf("• %s | %d messages | last: %s\n",
-					highlightStyle.Render(id),
-					s.MessageCount,
-					formatRelativeTime(s.LastUpdate)))
+			for i, s := range p.Sessions {
+				cursor := renderCursor(m.Focus == FocusSessions, m.SessionCursor == i)
+				style := getRowStyle(m.Focus == FocusSessions && m.SessionCursor == i)
+				
+				idStr := renderHash(s.ID)
+				content := fmt.Sprintf("%s %s | %s", 
+					idStr, 
+					style.Render(fmt.Sprintf("%d messages", s.MessageCount)), 
+					style.Render(formatRelativeTime(s.LastUpdate)))
+				
+				main.WriteString(fmt.Sprintf("%s%s\n", cursor, content))
 			}
 		}
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top,
-		listStyle.Width(sidebarWidth).Render(sidebar.String()),
-		detailsStyle.Width(mainWidth).Render(main.String()),
+		listStyle.Width(sidebarWidth).Height(paneHeight).Render(sidebar.String()),
+		detailsStyle.Width(mainWidth).Height(paneHeight).Render(main.String()),
 	)
 }
 

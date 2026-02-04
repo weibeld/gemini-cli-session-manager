@@ -17,10 +17,25 @@
     - [x] Update `tui` to handle the initial derived states.
 
 ## Phase 3: UI & Verification
-- [ ] Task: UI Updates
-    - [ ] Display truncated hash next to path.
-    - [ ] Style 'Orphaned' (strikethrough/red) and 'Unlocated' (red).
-- [ ] Task: Manual Verification
-    - [ ] Verify `cache.json` structure is now simple key-value.
-    - [ ] Verify 'Unlocated' persists (empty string in JSON).
-    - [ ] Verify 'Orphaned' is detected dynamically (path in JSON, missing on disk).
+- [x] Task: UI Updates
+    - [x] Display truncated hash next to path.
+    - [x] Style 'Orphaned' (strikethrough/red) and 'Unlocated' (red).
+- [x] Task: Implement Auto-Selection
+    - [x] Automatically update project selection when cursor moves.
+- [x] Task: Manual Verification
+    - [x] Verify `cache.json` structure is now simple key-value.
+    - [x] Verify 'Unlocated' persists (empty string in JSON).
+    - [x] Verify 'Orphaned' is detected dynamically (path in JSON, missing on disk).
+
+## Phase 4: Final Polish
+- [x] Task: Refine TUI Aesthetics
+    - [x] Update brackets `()` -> `[]`.
+    - [x] Reset colors for orphaned/unlocated tags to normal.
+    - [x] Format session rows (remove separators and prefixes).
+- [x] Task: Dual Pane Navigation
+    - [x] Add state for pane focus.
+    - [x] Implement `H` and `L` for focus switching.
+    - [x] Implement session list cursor.
+- [x] Task: Layout Stabilization
+    - [x] Ensure consistent pane heights.
+

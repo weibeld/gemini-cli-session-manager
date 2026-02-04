@@ -27,13 +27,19 @@ On startup, the application performs the following logic to determine project st
             -   `os.Stat(path)` missing? State = **Orphaned**.
 
 ## 3. UI Elements
+- **Navigation:**
+    - **Auto-Selection:** Moving the cursor in the Projects pane automatically updates the Sessions pane content.
+    - **Dual Pane Focus:** Support switching focus between Projects and Sessions panes using `H` and `L` keys.
 - **Projects Pane:**
-    -   **Valid:** `(truncated hash) Path`
-    -   **Orphaned:** `(truncated hash) Old Path [Orphaned]` (Path strikethrough).
-    -   **Unlocated:** `(truncated hash) [Unlocated]` (Red).
-    -   **Scanning:** `(truncated hash) ... [Scanning]`.
+    - **Valid:** `[truncated hash] Path`
+    - **Orphaned:** `[truncated hash] Old Path [Orphaned]` (Path strikethrough, normal color).
+    - **Unlocated:** `[truncated hash] [Unlocated]` (Normal color).
+    - **Scanning:** `[truncated hash] ... [Scanning]`.
 - **Sessions Pane:**
-    -   Unchanged (ID, Count, Time).
+    - Format: `[truncated hash] X messages relative_timestamp`
+    - Support interactive cursor for session selection.
+- **Layout:**
+    - Panes must maintain equal height.
 
 ## 4. Scan Behavior
 - **New Projects:** Automatically queued for background scanning.
