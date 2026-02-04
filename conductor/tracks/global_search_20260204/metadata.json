@@ -1,0 +1,8 @@
+{
+  "track_id": "global_search_20260204",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-02-04T00:00:00Z",
+  "updated_at": "2026-02-04T00:00:00Z",
+  "description": "Implement global search capability across all projects and sessions, allowing users to find specific conversations by keyword."
+}
