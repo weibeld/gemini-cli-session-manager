@@ -6,12 +6,23 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/bubbles/spinner"
 	"geminictl/internal/cache"
 	"geminictl/internal/scanner"
 	"sort"
+
+	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+// ProjectStatus represents the resolution state of a project.
+type ProjectStatus int
+
+const (
+	StatusScanning ProjectStatus = iota
+	StatusValid
+	StatusUnlocated
+	StatusOrphaned
 )
 
 // Style definitions
@@ -22,29 +33,33 @@ var (
 	warning   = lipgloss.AdaptiveColor{Light: "#FF0000", Dark: "#FF5555"}
 
 	listStyle = lipgloss.NewStyle().
-		MarginRight(1).
-		Padding(1).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(subtle)
+			MarginRight(1).
+			Padding(1).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(subtle)
 
 	detailsStyle = lipgloss.NewStyle().
-		Padding(1).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(subtle)
+			Padding(1).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(subtle)
 
 	highlightStyle = lipgloss.NewStyle().Foreground(highlight)
 
 	titleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(highlight)
-
-	orphanStyle = lipgloss.NewStyle().
-		Foreground(warning).
-		Italic(true)
+			Bold(true).
+			Foreground(highlight)
 
 	orphanTagStyle = lipgloss.NewStyle().
 			Foreground(warning).
 			Bold(true)
+
+	unlocatedTagStyle = lipgloss.NewStyle().
+				Foreground(warning).
+				Bold(true)
+
+	strikethroughStyle = lipgloss.NewStyle().
+				Strikethrough(true).
+				Foreground(subtle)
 )
 
 func collapseHome(path string) string {
@@ -67,11 +82,10 @@ func truncateMiddle(s string, max int) string {
 }
 
 type projectView struct {
-	ID         string
-	Path       string
-	IsOrphan   bool
-	Sessions   []scanner.Session
-	IsScanning bool
+	ID       string
+	Path     string
+	Status   ProjectStatus
+	Sessions []scanner.Session
 }
 
 type Model struct {
@@ -82,9 +96,9 @@ type Model struct {
 	Height   int
 	Err      error
 
-	scanner  *scanner.Scanner
-	cache    *cache.Cache
-	spinner  spinner.Model
+	scanner *scanner.Scanner
+	cache   *cache.Cache
+	spinner spinner.Model
 }
 
 // Internal message to carry the channel along with the result
@@ -98,16 +112,29 @@ type ScanFinishedMsg struct{}
 func NewModel(scanned []scanner.ProjectData, c *cache.Cache, sc *scanner.Scanner) Model {
 	var projects []projectView
 	for _, p := range scanned {
-		path, ok := c.Get(p.ID)
-		if !ok {
-			path = p.ID // Initially just the ID
+		path, inCache := c.Get(p.ID)
+
+		var status ProjectStatus
+		if !inCache {
+			status = StatusScanning
+			path = p.ID
+		} else if path == "" {
+			status = StatusUnlocated
+			path = p.ID
+		} else {
+			// Check if directory exists
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				status = StatusOrphaned
+			} else {
+				status = StatusValid
+			}
 		}
+
 		projects = append(projects, projectView{
-			ID:         p.ID,
-			Path:       path,
-			IsOrphan:   false, // Initial state, will be updated in Phase 2
-			Sessions:   p.Sessions,
-			IsScanning: !ok, // Mark as scanning if not in cache
+			ID:       p.ID,
+			Path:     path,
+			Status:   status,
+			Sessions: p.Sessions,
 		})
 	}
 
@@ -165,7 +192,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) startScanningCmd() tea.Cmd {
 	var unknownIDs []string
 	for _, p := range m.Projects {
-		if p.IsScanning {
+		if p.Status == StatusScanning {
 			unknownIDs = append(unknownIDs, p.ID)
 		}
 	}
@@ -220,8 +247,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, p := range m.Projects {
 			if p.ID == msg.res.Hash {
 				m.Projects[i].Path = msg.res.Path
-				m.Projects[i].IsOrphan = false
-				m.Projects[i].IsScanning = false
+				m.Projects[i].Status = StatusValid
 
 				m.cache.Set(msg.res.Hash, msg.res.Path)
 				_ = m.cache.Save()
@@ -235,9 +261,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ScanFinishedMsg:
 		for i := range m.Projects {
-			if m.Projects[i].IsScanning {
-				m.Projects[i].IsScanning = false
-				// Save empty path for Unlocated (Persistence Task)
+			if m.Projects[i].Status == StatusScanning {
+				m.Projects[i].Status = StatusUnlocated
+				// Save empty path for Unlocated
 				m.cache.Set(m.Projects[i].ID, "")
 				_ = m.cache.Save()
 			}
@@ -249,7 +275,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) isScanningGlobal() bool {
 	for _, p := range m.Projects {
-		if p.IsScanning {
+		if p.Status == StatusScanning {
 			return true
 		}
 	}
@@ -261,6 +287,7 @@ func (m Model) View() string {
 		return "No projects found in ~/.gemini/tmp"
 	}
 
+	// Calculate widths: 50/50 split
 	sidebarWidth := (m.Width / 2) - 2
 	mainWidth := m.Width - sidebarWidth - 6
 
@@ -288,35 +315,53 @@ func (m Model) View() string {
 			style = style.Foreground(special)
 		}
 
-		displayPath := collapseHome(p.Path)
-		if displayPath == p.ID && len(displayPath) > 12 {
-			displayPath = displayPath[:12] + "..."
+		displayID := p.ID
+		if len(displayID) > 8 {
+			displayID = displayID[:8]
 		}
 
-		availableWidth := sidebarWidth - 6
-		if p.IsScanning {
+		idStr := fmt.Sprintf("(%s) ", displayID)
+		pathStr := collapseHome(p.Path)
+
+		// Determine available width for path
+		availableWidth := sidebarWidth - 6 - len(idStr)
+		if p.Status == StatusScanning {
 			availableWidth -= 2
-		}
-		if (p.IsOrphan || p.Path == p.ID) && !p.IsScanning {
-			availableWidth -= 9
-		}
-
-		displayPath = truncateMiddle(displayPath, availableWidth)
-
-		suffix := ""
-		if p.IsScanning {
-			suffix = " " + m.spinner.View()
-		} else if p.IsOrphan || p.Path == p.ID {
-			suffix = " " + orphanTagStyle.Render("[Orphan]") // Will update to [Unlocated] in Phase 2
+		} else if p.Status == StatusOrphaned {
+			availableWidth -= 11 // " [Orphaned]"
+		} else if p.Status == StatusUnlocated {
+			availableWidth -= 12 // " [Unlocated]"
 		}
 
-		sidebar.WriteString(fmt.Sprintf("%s%s%s\n", cursor, style.Render(displayPath), suffix))
+		pathStr = truncateMiddle(pathStr, availableWidth)
+
+		var row string
+		switch p.Status {
+		case StatusScanning:
+			row = fmt.Sprintf("%s%s %s", highlightStyle.Render(idStr), style.Render(pathStr), m.spinner.View())
+		case StatusValid:
+			row = fmt.Sprintf("%s%s", highlightStyle.Render(idStr), style.Render(pathStr))
+		case StatusOrphaned:
+			row = fmt.Sprintf("%s%s %s", highlightStyle.Render(idStr), strikethroughStyle.Render(pathStr), orphanTagStyle.Render("[Orphaned]"))
+		case StatusUnlocated:
+			row = fmt.Sprintf("%s%s", highlightStyle.Render(idStr), unlocatedTagStyle.Render("[Unlocated]"))
+		}
+
+		sidebar.WriteString(fmt.Sprintf("%s%s\n", cursor, row))
 	}
 
 	var main strings.Builder
 	if m.Selected < len(m.Projects) {
 		p := m.Projects[m.Selected]
-		main.WriteString(titleStyle.Render(fmt.Sprintf("Sessions for %s", collapseHome(p.Path))) + "\n\n")
+		displayPath := collapseHome(p.Path)
+		if p.Status == StatusUnlocated {
+			displayID := p.ID
+			if len(displayID) > 12 {
+				displayID = displayID[:12] + "..."
+			}
+			displayPath = displayID
+		}
+		main.WriteString(titleStyle.Render(fmt.Sprintf("Sessions for %s", displayPath)) + "\n\n")
 
 		if len(p.Sessions) == 0 {
 			main.WriteString("No sessions found.")
@@ -339,7 +384,6 @@ func (m Model) View() string {
 		detailsStyle.Width(mainWidth).Render(main.String()),
 	)
 }
-
 
 func formatRelativeTime(t time.Time) string {
 	duration := time.Since(t)

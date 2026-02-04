@@ -45,6 +45,24 @@ var statusCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		// --- Integrity Check: Garbage Collection ---
+		// Remove cache entries that are no longer present in ~/.gemini/tmp
+		activeIDs := make(map[string]bool)
+		for _, p := range projects {
+			activeIDs[p.ID] = true
+		}
+
+		changed := false
+		for hash := range c.Data {
+			if !activeIDs[hash] {
+				c.Delete(hash)
+				changed = true
+			}
+		}
+		if changed {
+			_ = c.Save()
+		}
+
 		m := tui.NewModel(projects, c, scan)
 		p := tea.NewProgram(m, tea.WithAltScreen())
 
