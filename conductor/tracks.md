@@ -11,4 +11,7 @@ This file tracks all major tracks for the project. Each track has its own detail
   *Link: [./archive/resolution_research_20260202/](./archive/resolution_research_20260202/)*
 
 - [x] **Track: Background project scanning and resolution implementation**
-  *Link: [./archive/background_scanning_20260202/](./archive/background_scanning_20260202/)*\n---\n\n- [x] **Track: Optimize cache persistence, validation, and UI details**\n*Link: [./tracks/registry_optimization_20260202/](./tracks/registry_optimization_20260202/)*
+  *Link: [./archive/background_scanning_20260202/](./archive/background_scanning_20260202/)*
+
+- [x] **Track: Optimize cache persistence, validation, and UI details**
+  *Link: [./archive/registry_optimization_20260202/](./archive/registry_optimization_20260202/)*
