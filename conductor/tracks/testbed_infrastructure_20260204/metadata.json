@@ -1,0 +1,8 @@
+{
+  "track_id": "testbed_infrastructure_20260204",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-02-04T00:00:00Z",
+  "updated_at": "2026-02-04T00:00:00Z",
+  "description": "Establish a deterministic testbed with a seeder tool to generate realistic, mathematically valid test data for verifying geminictl operations."
+}

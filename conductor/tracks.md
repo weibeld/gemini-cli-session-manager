@@ -15,3 +15,4 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 - [x] **Track [registry_optimization_20260202]: Optimize cache persistence, validation, and UI details**
   *Link: [./archive/registry_optimization_20260202/](./archive/registry_optimization_20260202/)*
+\n---\n\n- [ ] **Track [testbed_infrastructure_20260204]: Testbed Infrastructure**\n*Link: [./tracks/testbed_infrastructure_20260204/](./tracks/testbed_infrastructure_20260204/)*
