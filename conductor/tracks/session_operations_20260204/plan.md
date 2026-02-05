@@ -1,10 +1,10 @@
 # Implementation Plan - Session Operations
 
 ## Phase 1: Inspection & Integration
-- [ ] Task: Implement Session Viewport
-    - [ ] Create a viewport component to render session JSON content.
-    - [ ] Implement text wrapping and scrolling for long transcripts.
-- [ ] Task: Implement 'Resume' Action
+- [x] Task: Implement Session Viewport b7e2a06
+    - [x] Create a viewport component to render session JSON content.
+    - [x] Implement text wrapping and scrolling for long transcripts.
+- [~] Task: Implement 'Resume' Action
     - [ ] Use `tea.ExecProcess` to launch `gemini --resume`.
     - [ ] Implement directory switching before execution.
 

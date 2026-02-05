@@ -39,6 +39,7 @@ const (
 	ModeNav Mode = iota
 	ModeMove
 	ModeDelete
+	ModeInspect
 )
 
 // Style definitions
@@ -259,18 +260,35 @@ func waitForResolution(c <-chan scanner.Resolution) tea.Msg {
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
-	// 1. Handle Modal Result (if a modal just returned a value)
+	// 1. Handle Modal Result
 	if res, ok := msg.(ModalResult); ok {
 		return m.handleModalResult(res)
 	}
 
-	// 2. Handle Active Modal Update
+	// 2. Global Messages (Window Size, etc.)
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.Width = msg.Width
+		m.Height = msg.Height
+		// If modal is active, it needs the resize too
+		if m.modal != nil {
+			m.modal, cmd = m.modal.Update(msg)
+			return m, cmd
+		}
+	case spinner.TickMsg:
+		m.spinner, cmd = m.spinner.Update(msg)
+		if m.modal == nil {
+			return m, cmd
+		}
+	}
+
+	// 3. Handle Active Modal Update
 	if m.modal != nil {
 		m.modal, cmd = m.modal.Update(msg)
 		return m, cmd
 	}
 
-	// 3. Main Navigation
+	// 4. Main Navigation
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -305,10 +323,27 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.SessionCursor++
 				}
 			}
-		case "enter", " ":
+		case "enter", " ", "v":
 			if m.Focus == FocusProjects {
 				m.Selected = m.Cursor
 				m.SessionCursor = 0
+			} else {
+				// Inspect Session
+				p := m.Projects[m.Selected]
+				if len(p.Sessions) > 0 {
+					sID := p.Sessions[m.SessionCursor].ID
+					fullSession, err := gemini.GetSession(m.scanner.RootDir, p.ID, sID)
+					if err != nil {
+						m.Err = err
+					} else {
+						m.Mode = ModeInspect
+						m.modal = NewInspectModal(fullSession)
+						// We need to trigger a resize for the modal to initialize viewport
+						return m, func() tea.Msg { 
+							return tea.WindowSizeMsg{Width: m.Width, Height: m.Height} 
+						}
+					}
+				}
 			}
 		case "m":
 			if m.Focus == FocusProjects && len(m.Projects) > 0 {
@@ -324,7 +359,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "d":
 			if m.Focus == FocusProjects && len(m.Projects) > 0 {
 				p := m.Projects[m.Selected]
-				m.Mode = ModeDelete
 				totalMessages := 0
 				for _, s := range p.Sessions {
 					totalMessages += s.MessageCount
@@ -333,17 +367,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					Title:  "Confirm Deletion",
 					Prompt: fmt.Sprintf("Permanently delete project [%s] and its %d sessions (%d messages)?", p.ID[:8], len(p.Sessions), totalMessages),
 				}
+				m.Mode = ModeDelete
 				return m, m.modal.Init()
 			}
 		}
-
-	case tea.WindowSizeMsg:
-		m.Width = msg.Width
-		m.Height = msg.Height
-
-	case spinner.TickMsg:
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
 
 	case resolutionPacket:
 		for i, p := range m.Projects {
@@ -375,7 +402,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleModalResult(res ModalResult) (tea.Model, tea.Cmd) {
-	m.modal = nil // Clear modal
+	m.modal = nil
 
 	if res.Canceled {
 		m.Mode = ModeNav

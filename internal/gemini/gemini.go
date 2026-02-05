@@ -117,6 +117,39 @@ func ReadSessions(rootDir, projectID string) ([]Session, error) {
 	return sessions, nil
 }
 
+// GetSession aggregates all messages for a specific session ID in a project.
+// Gemini CLI may split a single logical session across multiple files if it spans long periods.
+func GetSession(rootDir, projectID, sessionID string) (Session, error) {
+	allSessions, err := ReadSessions(rootDir, projectID)
+	if err != nil {
+		return Session{}, err
+	}
+
+	var result Session
+	found := false
+
+	for _, s := range allSessions {
+		if s.ID == sessionID {
+			if !found {
+				result = s
+				found = true
+			} else {
+				// Aggregate messages
+				result.Messages = append(result.Messages, s.Messages...)
+				// Update timestamps if necessary (assuming they are already sorted or we sort later)
+			}
+		}
+	}
+
+	if !found {
+		return Session{}, fmt.Errorf("session %s not found in project %s", sessionID, projectID)
+	}
+
+	// Ensure messages are sorted by timestamp if they came from multiple files
+	// (Gemini CLI session files are usually chronological, but aggregation might need care)
+	return result, nil
+}
+
 // WriteSession marshals and writes a session to the Gemini storage structure.
 // It generates a filename in the format: session-YYYY-MM-DDTHH-mm-shortID.json
 func WriteSession(rootDir, projectID string, s Session) error {

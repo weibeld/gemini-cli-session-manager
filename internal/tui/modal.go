@@ -5,8 +5,10 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"geminictl/internal/gemini"
 )
 
 // Modal defines the interface for our unified modal components.
@@ -164,4 +166,97 @@ func (m ListSelectorModal) View(w, h int) string {
 		}
 	}
 	return renderModal(w, h, m.Title, b.String())
+}
+
+// --- Inspect Session Modal ---
+
+type InspectModal struct {
+	Title    string
+	Session  gemini.Session
+	viewport viewport.Model
+	ready    bool
+}
+
+func NewInspectModal(s gemini.Session) *InspectModal {
+	return &InspectModal{
+		Title:   fmt.Sprintf("Inspect Session [%s]", s.ID[:8]),
+		Session: s,
+	}
+}
+
+func (m *InspectModal) Init() tea.Cmd { return nil }
+
+func (m *InspectModal) Update(msg tea.Msg) (Modal, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc", "q":
+			return m, func() tea.Msg { return ModalResult{Canceled: true} }
+		}
+	case tea.WindowSizeMsg:
+		// Viewport needs to be initialized or resized
+		headerHeight := 3
+		footerHeight := 3
+		verticalMargin := headerHeight + footerHeight
+		
+		if !m.ready {
+			m.viewport = viewport.New(msg.Width-10, msg.Height-verticalMargin)
+			m.viewport.SetContent(m.formatContent(msg.Width - 12))
+			m.ready = true
+		} else {
+			m.viewport.Width = msg.Width - 10
+			m.viewport.Height = msg.Height - verticalMargin
+			m.viewport.SetContent(m.formatContent(msg.Width - 12))
+		}
+	}
+
+	m.viewport, cmd = m.viewport.Update(msg)
+	return m, cmd
+}
+
+func (m *InspectModal) formatContent(width int) string {
+	var b strings.Builder
+	
+	userStyle := lipgloss.NewStyle().Foreground(special).Bold(true)
+	geminiStyle := lipgloss.NewStyle().Foreground(highlight).Bold(true)
+	contentStyle := lipgloss.NewStyle().Width(width).PaddingLeft(2)
+
+	for _, msg := range m.Session.Messages {
+		role := "User"
+		style := userStyle
+		if msg.Type == "gemini" {
+			role = "Gemini"
+			style = geminiStyle
+		}
+		
+		b.WriteString(style.Render(role) + "\n")
+		b.WriteString(contentStyle.Render(msg.Content) + "\n\n")
+	}
+	
+	return b.String()
+}
+
+func (m *InspectModal) View(w, h int) string {
+	if !m.ready {
+		return "Initializing..."
+	}
+
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(highlight).
+		Padding(1)
+
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(highlight).
+		MarginBottom(1)
+
+	header := titleStyle.Render(m.Title)
+	footer := lipgloss.NewStyle().Foreground(subtle).Render("\n(esc/q to close, j/k to scroll)")
+	
+	modal := style.Render(header + "\n" + m.viewport.View() + footer)
+
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal)
 }

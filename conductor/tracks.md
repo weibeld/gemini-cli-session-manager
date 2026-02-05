@@ -27,7 +27,7 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [ ] **Track [session_operations_20260204]: Session Operations**
+- [~] **Track [session_operations_20260204]: Session Operations**
   *Link: [./tracks/session_operations_20260204/](./tracks/session_operations_20260204/)*
 
 ---

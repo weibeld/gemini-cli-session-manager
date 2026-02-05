@@ -5,6 +5,7 @@
 - Check what's the 'gemini --include-directories' option
 - In the projects pane, use the leaf directory of a project as the "project name" and display it separately after the hash but before the full path. Display then the full path next to the name in maybe a dimmed way (may also be truncated as it is now)
 - Remove 'status' command from 'geminictl': the current functionality will be just the main functionality of the app
+- In the directory input method or in the Change Directory operation, normalise the passed directory paths (e.g. either add or remove the trailing slash)
 
 ## Done
 
