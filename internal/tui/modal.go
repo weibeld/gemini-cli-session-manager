@@ -55,9 +55,9 @@ func (m ConfirmModal) Update(msg tea.Msg) (Modal, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "y", "Y":
-			return nil, func() tea.Msg { return ModalResult{Value: true} }
+			return m, func() tea.Msg { return ModalResult{Value: true} }
 		case "n", "N", "esc":
-			return nil, func() tea.Msg { return ModalResult{Canceled: true} }
+			return m, func() tea.Msg { return ModalResult{Canceled: true} }
 		}
 	}
 	return m, nil
@@ -95,9 +95,9 @@ func (m TextInputModal) Update(msg tea.Msg) (Modal, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
-			return nil, func() tea.Msg { return ModalResult{Value: m.Input.Value()} }
+			return m, func() tea.Msg { return ModalResult{Value: m.Input.Value()} }
 		case "esc":
-			return nil, func() tea.Msg { return ModalResult{Canceled: true} }
+			return m, func() tea.Msg { return ModalResult{Canceled: true} }
 		}
 	}
 	m.Input, cmd = m.Input.Update(msg)
@@ -137,10 +137,10 @@ func (m ListSelectorModal) Update(msg tea.Msg) (Modal, tea.Cmd) {
 			}
 		case "enter":
 			if len(m.Options) > 0 {
-				return nil, func() tea.Msg { return ModalResult{Value: m.Options[m.Cursor].ID} }
+				return m, func() tea.Msg { return ModalResult{Value: m.Options[m.Cursor].ID} }
 			}
 		case "esc":
-			return nil, func() tea.Msg { return ModalResult{Canceled: true} }
+			return m, func() tea.Msg { return ModalResult{Canceled: true} }
 		}
 	}
 	return m, nil

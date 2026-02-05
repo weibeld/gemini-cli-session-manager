@@ -33,6 +33,14 @@ const (
 	FocusSessions
 )
 
+type Mode int
+
+const (
+	ModeNav Mode = iota
+	ModeMove
+	ModeDelete
+)
+
 // Style definitions
 var (
 	subtle    = lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#383838"}
@@ -117,6 +125,7 @@ type Model struct {
 	Selected      int
 	SessionCursor int
 	Focus         Focus
+	Mode          Mode
 	Width         int
 	Height        int
 	Err           error
@@ -135,7 +144,7 @@ type resolutionPacket struct {
 
 type ScanFinishedMsg struct{}
 
-func NewModel(scanned []scanner.ProjectData, c *cache.Cache, sc *scanner.Scanner) Model {
+func NewModel(scanned []scanner.ProjectData, c *cache.Cache, sc *scanner.Scanner) *Model {
 	var projects []projectView
 	for _, p := range scanned {
 		projects = append(projects, deriveProjectView(p.ID, p.Sessions, c))
@@ -145,10 +154,11 @@ func NewModel(scanned []scanner.ProjectData, c *cache.Cache, sc *scanner.Scanner
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(highlight)
 
-	m := Model{
+	m := &Model{
 		Projects: projects,
 		Selected: 0,
 		Focus:    FocusProjects,
+		Mode:     ModeNav,
 		scanner:  sc,
 		cache:    c,
 		spinner:  s,
@@ -215,11 +225,11 @@ func (m *Model) sortProjects() {
 	}
 }
 
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, m.startScanningCmd())
 }
 
-func (m Model) startScanningCmd() tea.Cmd {
+func (m *Model) startScanningCmd() tea.Cmd {
 	var unknownIDs []string
 	for _, p := range m.Projects {
 		if p.Status == StatusScanning {
@@ -246,18 +256,21 @@ func waitForResolution(c <-chan scanner.Resolution) tea.Msg {
 	return resolutionPacket{res, c}
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
+	// 1. Handle Modal Result (if a modal just returned a value)
+	if res, ok := msg.(ModalResult); ok {
+		return m.handleModalResult(res)
+	}
+
+	// 2. Handle Active Modal Update
 	if m.modal != nil {
-		switch msg := msg.(type) {
-		case ModalResult:
-			return m.handleModalResult(msg)
-		}
 		m.modal, cmd = m.modal.Update(msg)
 		return m, cmd
 	}
 
+	// 3. Main Navigation
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -300,16 +313,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "m":
 			if m.Focus == FocusProjects && len(m.Projects) > 0 {
 				p := m.Projects[m.Selected]
+				m.Mode = ModeMove
 				startDir := p.Path
 				if p.Status == StatusUnlocated || p.Status == StatusScanning {
 					startDir, _ = os.UserHomeDir()
 				}
-				m.modal = NewTextInputModal(fmt.Sprintf("Enter new directory for [%s]", p.ID[:8]), startDir, "Absolute path...")
+				m.modal = NewTextInputModal(fmt.Sprintf("Move [%s] to:", p.ID[:8]), startDir, "Absolute path...")
 				return m, m.modal.Init()
 			}
 		case "d":
 			if m.Focus == FocusProjects && len(m.Projects) > 0 {
 				p := m.Projects[m.Selected]
+				m.Mode = ModeDelete
 				totalMessages := 0
 				for _, s := range p.Sessions {
 					totalMessages += s.MessageCount
@@ -359,14 +374,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleModalResult(res ModalResult) (tea.Model, tea.Cmd) {
+func (m *Model) handleModalResult(res ModalResult) (tea.Model, tea.Cmd) {
+	m.modal = nil // Clear modal
+
 	if res.Canceled {
-		m.modal = nil
+		m.Mode = ModeNav
 		return m, nil
 	}
 
-	switch m.modal.(type) {
-	case ConfirmModal:
+	switch m.Mode {
+	case ModeDelete:
 		if res.Value.(bool) {
 			p := m.Projects[m.Selected]
 			if err := gemini.DeleteProject(m.scanner.RootDir, p.ID); err != nil {
@@ -380,7 +397,7 @@ func (m Model) handleModalResult(res ModalResult) (tea.Model, tea.Cmd) {
 				m.Cursor = m.Selected
 			}
 		}
-	case TextInputModal:
+	case ModeMove:
 		newPath := res.Value.(string)
 		oldID := m.Projects[m.Selected].ID
 		newID, err := gemini.MoveProject(m.scanner.RootDir, oldID, newPath)
@@ -395,11 +412,11 @@ func (m Model) handleModalResult(res ModalResult) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	m.modal = nil
+	m.Mode = ModeNav
 	return m, nil
 }
 
-func (m Model) isScanningGlobal() bool {
+func (m *Model) isScanningGlobal() bool {
 	for _, p := range m.Projects {
 		if p.Status == StatusScanning {
 			return true
@@ -408,11 +425,12 @@ func (m Model) isScanningGlobal() bool {
 	return false
 }
 
-func (m Model) View() string {
+func (m *Model) View() string {
 	if len(m.Projects) == 0 {
 		return "No projects found in ~/.gemini/tmp"
 	}
 
+	// Calculate widths: 50/50 split
 	sidebarWidth := (m.Width / 2) - 2
 	mainWidth := m.Width - sidebarWidth - 6
 	paneHeight := m.Height - 6
