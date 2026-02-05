@@ -19,10 +19,8 @@ This file tracks all major tracks for the project. Each track has its own detail
 - [x] **Track [testbed_infrastructure_20260204]: Testbed Infrastructure**
   *Link: [./archive/testbed_infrastructure_20260204/](./archive/testbed_infrastructure_20260204/)*
 
----
-
 - [x] **Track [project_operations_20260204]: Project Operations**
-  *Link: [./tracks/project_operations_20260204/](./tracks/project_operations_20260204/)*
+  *Link: [./archive/project_operations_20260204/](./archive/project_operations_20260204/)*
 
 ---
 
@@ -33,3 +31,8 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 - [ ] **Track [global_search_20260204]: Global Search**
   *Link: [./tracks/global_search_20260204/](./tracks/global_search_20260204/)*
+
+---
+
+- [ ] **Track [directory_input_method_20260205]: Directory Input Method Research & Implementation**
+  *Link: [./tracks/directory_input_method_20260205/](./tracks/directory_input_method_20260205/)*
