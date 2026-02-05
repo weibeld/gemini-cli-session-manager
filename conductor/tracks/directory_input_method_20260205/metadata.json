@@ -1,0 +1,8 @@
+{
+  "track_id": "directory_input_method_20260205",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-02-05T00:00:00Z",
+  "updated_at": "2026-02-05T00:00:00Z",
+  "description": "Research and implement an advanced directory selection method, evaluating optimized text-based input (auto-complete, chunk navigation) against a full-fledged file tree explorer."
+}
