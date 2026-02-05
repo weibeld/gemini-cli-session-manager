@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"geminictl/internal/gemini"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
@@ -78,7 +79,8 @@ func runGenerator(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	now := time.Now().Format(time.RFC3339)
+	// Format: 2026-01-20T08:12:58.167Z
+	now := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	cacheData := make(map[string]string)
 
 	// 4. Process Projects
@@ -119,15 +121,19 @@ func runGenerator(cmd *cobra.Command, args []string) {
 			content := string(sessionTemplateData)
 			content = strings.ReplaceAll(content, "{{PROJECT_HASH}}", projectHash)
 			content = strings.ReplaceAll(content, "{{SESSION_ID}}", sID)
+			content = strings.ReplaceAll(content, "{{TIMESTAMP}}", now)
+			content = strings.ReplaceAll(content, "{{MSG_ID_1}}", uuid.New().String())
+			content = strings.ReplaceAll(content, "{{MSG_ID_2}}", uuid.New().String())
 
 			var s gemini.Session
 			if err := json.Unmarshal([]byte(content), &s); err != nil {
+				fmt.Printf("Error unmarshalling session %s: %v\n", sID, err)
 				continue
 			}
-			s.StartTime = now
-			s.LastUpdated = now
-
-			_ = gemini.WriteSession(geminiRoot, projectHash, s)
+			
+			if err := gemini.WriteSession(geminiRoot, projectHash, s); err != nil {
+				fmt.Printf("Error writing session %s: %v\n", sID, err)
+			}
 		}
 	}
 

@@ -1,22 +1,21 @@
 {
   "sessionId": "{{SESSION_ID}}",
   "projectHash": "{{PROJECT_HASH}}",
+  "startTime": "{{TIMESTAMP}}",
+  "lastUpdated": "{{TIMESTAMP}}",
   "messages": [
     {
-      "role": "user",
-      "content": "Hello, this is a test message in a mock project."
+      "id": "{{MSG_ID_1}}",
+      "timestamp": "{{TIMESTAMP}}",
+      "type": "user",
+      "content": "Hello from the testbed."
     },
     {
-      "role": "assistant",
-      "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
-    },
-    {
-      "role": "user",
-      "content": "Can you summarize the project goals?"
-    },
-    {
-      "role": "assistant",
-      "content": "The goal is to provide a robust testbed for the Gemini CLI Session Manager."
+      "id": "{{MSG_ID_2}}",
+      "timestamp": "{{TIMESTAMP}}",
+      "type": "gemini",
+      "content": "Acknowledged. This is a minimal compliant session file.",
+      "model": "gemini-2.5-flash"
     }
   ]
 }
