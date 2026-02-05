@@ -6,8 +6,8 @@
 - **CLI Arguments:** [Cobra](https://github.com/spf13/cobra) - For standard command-line interface structure and flag handling.
 
 ## Data & Persistence
-- **Registry:** A simple JSON file located at `~/.config/geminictl/projects.json`.
-    - **Purpose:** Maps SHA-256 hashes (Project IDs) back to absolute directory paths, as hashes cannot be reversed.
+- **Cache:** A simple JSON file located at `~/.config/geminictl/cache.json`.
+    - **Purpose:** Maps SHA-256 hashes (Project IDs) back to absolute directory paths to facilitate instant loading and prevent redundant scanning.
 - **Data Source:** Read-only access to `~/.gemini/tmp/` for session data, logs, and checkpoints.
 
 ## Development & Tooling

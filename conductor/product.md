@@ -23,6 +23,10 @@ A command to provide a comprehensive system-wide view:
   - **Metrics:** Message count per session.
   - **Recency:** Relative time of the last message (e.g., "2 hours ago").
 
+### Management Operations
+- **Project Migration:** Move an entire project history to a new directory context. The tool handles the re-hashing of the Project ID and updates all internal session metadata to maintain consistency.
+- **Destructive Deletion:** Permanently remove a project and all its associated session data from the system's temporary storage.
+
 ## Target Audience
 - **Developers:** Who need to switch contexts or resume specific past sessions without guessing IDs.
 - **Power Users:** Who want to audit their usage or clean up old session data.

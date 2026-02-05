@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"geminictl/internal/cache"
+	"geminictl/internal/gemini"
 	"geminictl/internal/scanner"
 	"sort"
 
@@ -318,15 +319,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "c":
 			if m.Focus == FocusProjects && len(m.Projects) > 0 {
+				p := m.Projects[m.Cursor]
 				m.Mode = ModeInputPath
-				m.textInput.SetValue("")
-				m.prompt = fmt.Sprintf("Enter new directory for project [%s]:", m.Projects[m.Cursor].ID[:8])
+				initialValue := p.Path
+				if p.Status == StatusUnlocated || p.Status == StatusScanning {
+					home, _ := os.UserHomeDir()
+					initialValue = home
+				}
+				m.textInput.SetValue(initialValue)
+				m.prompt = fmt.Sprintf("Enter new directory for project [%s]:", p.ID[:8])
 				return m, textinput.Blink
 			}
 		case "d", "x":
 			if m.Focus == FocusProjects && len(m.Projects) > 0 {
+				p := m.Projects[m.Cursor]
+				totalMessages := 0
+				for _, s := range p.Sessions {
+					totalMessages += s.MessageCount
+				}
 				m.Mode = ModeConfirmDelete
-				m.prompt = fmt.Sprintf("Remove project [%s] from cache?", m.Projects[m.Cursor].ID[:8])
+				m.prompt = fmt.Sprintf("Permanently delete project [%s] and its %d sessions (%d messages)?",
+					p.ID[:8], len(p.Sessions), totalMessages)
 			}
 		}
 
@@ -379,16 +392,24 @@ func (m Model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "enter":
 			if m.Mode == ModeInputPath {
-				path := m.textInput.Value()
-				id := m.Projects[m.Cursor].ID
-				if err := m.cache.VerifyAndSet(id, path); err != nil {
+				newPath := m.textInput.Value()
+				oldID := m.Projects[m.Cursor].ID
+
+				// 1. Perform deep move
+				newID, err := gemini.MoveProject(m.scanner.RootDir, oldID, newPath)
+				if err != nil {
 					m.Err = err
-					m.prompt = fmt.Sprintf("Error: %v\n\nPress any key to continue...", err)
-					// We stay in ModeInputPath but with error prompt
+					m.prompt = fmt.Sprintf("Error migrating project: %v\n\nPress any key to continue...", err)
 					return m, nil
 				}
-				// Refresh project view
-				m.Projects[m.Cursor] = deriveProjectView(id, m.Projects[m.Cursor].Sessions, m.cache)
+
+				// 2. Update Cache
+				_ = m.cache.Delete(oldID)
+				m.cache.Set(newID, newPath)
+				_ = m.cache.Save()
+
+				// 3. Refresh project in view
+				m.Projects[m.Cursor] = deriveProjectView(newID, m.Projects[m.Cursor].Sessions, m.cache)
 				m.sortProjects()
 				m.Mode = ModeNav
 				m.Err = nil
@@ -397,15 +418,25 @@ func (m Model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "y", "Y":
 			if m.Mode == ModeConfirmDelete {
 				id := m.Projects[m.Cursor].ID
+				// 1. Delete from physical storage
+				if err := gemini.DeleteProject(m.scanner.RootDir, id); err != nil {
+					m.Err = err
+					m.prompt = fmt.Sprintf("Error deleting project: %v\n\nPress any key to continue...", err)
+					return m, nil
+				}
+				// 2. Delete from cache
 				_ = m.cache.Delete(id)
-				// We don't remove from m.Projects immediately because GC will handle it on next startup,
-				// but for immediate feedback we should probably refresh.
-				// However, if we delete from cache, it will show as 'Scanning' or 'Unlocated' on next scan.
-				// Let's just mark it as scanning to trigger a re-resolve attempt or just remove it from view.
-				// If we remove from view, the user might be confused if it reappears.
-				// Requirement says "remove project entry from the local cache.json".
-				// Let's just refresh the view for this project.
-				m.Projects[m.Cursor] = deriveProjectView(id, m.Projects[m.Cursor].Sessions, m.cache)
+
+				// 3. Remove from view
+				m.Projects = append(m.Projects[:m.Cursor], m.Projects[m.Cursor+1:]...)
+				if m.Cursor >= len(m.Projects) && len(m.Projects) > 0 {
+					m.Cursor = len(m.Projects) - 1
+				}
+				if len(m.Projects) > 0 {
+					m.Selected = m.Cursor
+				} else {
+					m.Selected = 0
+				}
 				m.Mode = ModeNav
 			}
 		case "n", "N":

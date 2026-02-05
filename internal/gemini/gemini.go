@@ -143,6 +143,57 @@ func WriteSession(rootDir, projectID string, s Session) error {
 	return os.WriteFile(filepath.Join(sessionPath, filename), data, 0644)
 }
 
+// DeleteProject removes the entire project directory from Gemini storage.
+func DeleteProject(rootDir, projectID string) error {
+	path := filepath.Join(rootDir, projectID)
+	return os.RemoveAll(path)
+}
+
+// MoveProject migrates a project to a new directory path.
+// It renames the storage directory and updates the projectHash in all sessions.
+func MoveProject(rootDir, oldID, newPath string) (string, error) {
+	newID, err := HashProjectID(newPath)
+	if err != nil {
+		return "", err
+	}
+
+	if oldID == newID {
+		return newID, nil // No change needed
+	}
+
+	oldPath := filepath.Join(rootDir, oldID)
+	newStoragePath := filepath.Join(rootDir, newID)
+
+	// 1. Rename the project directory
+	if err := os.Rename(oldPath, newStoragePath); err != nil {
+		return "", err
+	}
+
+	// 2. Update all sessions in the new directory
+	sessions, err := ReadSessions(rootDir, newID)
+	if err != nil {
+		return newID, fmt.Errorf("failed to read sessions after move: %w", err)
+	}
+
+	for _, s := range sessions {
+		// Store the old file path before we potentially rename/overwrite
+		oldFilePath := s.FilePath
+
+		s.ProjectHash = newID
+		if err := WriteSession(rootDir, newID, s); err != nil {
+			return newID, fmt.Errorf("failed to update session %s: %w", s.ID, err)
+		}
+
+		// If the filename changed (because the short ID changed), remove the old one
+		newShortID := newID[:8]
+		if !strings.Contains(filepath.Base(oldFilePath), newShortID) {
+			_ = os.Remove(oldFilePath)
+		}
+	}
+
+	return newID, nil
+}
+
 func parseSessionFile(path string) (Session, error) {
 	info, err := os.Stat(path)
 	if err != nil {

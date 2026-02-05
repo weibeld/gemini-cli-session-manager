@@ -21,7 +21,7 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [~] **Track [project_operations_20260204]: Project Operations**
+- [x] **Track [project_operations_20260204]: Project Operations**
   *Link: [./tracks/project_operations_20260204/](./tracks/project_operations_20260204/)*
 
 ---
