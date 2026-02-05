@@ -1,31 +1,35 @@
-.PHONY: build clean run testbed testbedrun
+.PHONY: build build-app build-testbedgen clean run testbed run-testbed
 
-BINARY_NAME=geminictl
-TESTBED_BIN=testbed
+APP_BIN=geminictl
+TESTBEDGEN_BIN=testbedgen
 BUILD_DIR=bin
 
 # Default testbed parameters
-TESTBED_CONFIG=cmd/testbed/config/default.json
-TESTBED_DIR=testbed-data
+DEFAULT_TESTBEDGEN_CONFIG=cmd/testbedgen/config/default.json
+DEFAULT_TESTBED_DIR=tmp/testbed
 
-build:
-	@echo "Building $(BINARY_NAME)..."
+build: build-app build-testbedgen
+
+build-app:
+	@echo "Building $(APP_BIN)..."
 	@mkdir -p $(BUILD_DIR)
-	@go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/geminictl
-	@echo "Building $(TESTBED_BIN)..."
-	@go build -o $(BUILD_DIR)/$(TESTBED_BIN) ./cmd/testbed
+	@go build -o $(BUILD_DIR)/$(APP_BIN) ./cmd/geminictl
+
+build-testbedgen:
+	@echo "Building $(TESTBEDGEN_BIN)..."
+	@mkdir -p $(BUILD_DIR)
+	@go build -o $(BUILD_DIR)/$(TESTBEDGEN_BIN) ./cmd/testbedgen
 
 clean:
 	@echo "Cleaning up..."
 	@rm -rf $(BUILD_DIR)
-	@rm -rf $(TESTBED_DIR)/
+	@rm -rf tmp/
 
-run:
-	@./$(BUILD_DIR)/$(BINARY_NAME) status $(ARGS)
+run: build-app
+	@./$(BUILD_DIR)/$(APP_BIN) status $(ARGS)
 
-testbed: build
-	@echo "Generating test data in $(TESTBED_DIR)..."
-	@./$(BUILD_DIR)/$(TESTBED_BIN) --config $(TESTBED_CONFIG) --dir $(TESTBED_DIR)
+testbed: build-testbedgen
+	@./$(BUILD_DIR)/$(TESTBEDGEN_BIN) --config $(DEFAULT_TESTBEDGEN_CONFIG) --dir $(DEFAULT_TESTBED_DIR)
 
-testbedrun: testbed
-	@./$(BUILD_DIR)/$(BINARY_NAME) --testbed $(TESTBED_DIR) status
+run-testbed: build-app
+	@./$(BUILD_DIR)/$(APP_BIN) --testbed $(DEFAULT_TESTBED_DIR) status

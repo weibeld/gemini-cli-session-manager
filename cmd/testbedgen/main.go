@@ -24,11 +24,11 @@ type ProjectConfig struct {
 var (
 	configPath string
 	testbedDir string
-	quiet      bool
+	verbose    bool
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "testbed",
+	Use:   "testbedgen",
 	Short: "Gemini CLI Session Manager Testbed Generator",
 	Long:  `A tool to generate realistic, isolated Gemini CLI data for development and testing.`,
 	Run:   runGenerator,
@@ -37,18 +37,12 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to test configuration JSON (MANDATORY)")
 	rootCmd.PersistentFlags().StringVarP(&testbedDir, "dir", "d", "", "Directory where the testbed will be generated (MANDATORY)")
-	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Only print a final summary")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Print detailed generation logs")
 	_ = rootCmd.MarkPersistentFlagRequired("config")
 	_ = rootCmd.MarkPersistentFlagRequired("dir")
 }
 
 func runGenerator(cmd *cobra.Command, args []string) {
-	start := time.Now()
-
-	if !quiet {
-		fmt.Printf("Refreshing testbed in %s...\n", testbedDir)
-	}
-
 	// 1. Initialize
 	_ = os.RemoveAll(testbedDir)
 	if err := os.MkdirAll(testbedDir, 0755); err != nil {
@@ -77,9 +71,7 @@ func runGenerator(cmd *cobra.Command, args []string) {
 	}
 
 	// 3. Load Session Template
-	// Note: We use a relative path from the binary location or cwd. 
-	// For dev, cmd/testbed/templates/session.json is expected.
-	templatePath := filepath.Join("cmd", "testbed", "templates", "session.json")
+	templatePath := filepath.Join("cmd", "testbedgen", "templates", "session.json")
 	sessionTemplateData, err := os.ReadFile(templatePath)
 	if err != nil {
 		fmt.Printf("Error reading template: %v\n", err)
@@ -114,7 +106,7 @@ func runGenerator(cmd *cobra.Command, args []string) {
 			cacheData[projectHash] = ""
 		}
 
-		if !quiet {
+		if verbose {
 			status := "Valid"
 			if isUnlocated {
 				status = "Unlocated"
@@ -139,11 +131,11 @@ func runGenerator(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// 6. Write Cache (in the new location)
+	// 6. Write Cache
 	cacheJSON, _ := json.MarshalIndent(cacheData, "", "  ")
 	_ = os.WriteFile(filepath.Join(geminictlConfigRoot, "cache.json"), cacheJSON, 0644)
 
-	fmt.Printf("Success: Generated %d projects in %v.\n", len(config.Projects), time.Since(start).Round(time.Millisecond))
+	fmt.Printf("Created testbed in %s\n", testbedDir)
 }
 
 func main() {

@@ -1,0 +1,41 @@
+{
+  "projects": [
+    {
+      "path": "workdir-a",
+      "sessions": [
+        "deac22c2-4c3d-4d5a-b924-5c027224bdd4", 
+        "e8b1842a-0706-4820-aed6-f2515bb87453",
+        "f1e2d3c4-b5a6-4f5e-9d8c-7b6a5e4d3c2b"
+      ]
+    },
+    {
+      "path": "workdir-b",
+      "sessions": [
+        "8d987317-e6a4-489a-844a-4dfc799f77e0"
+      ]
+    },
+    {
+      "path": "workdir-c",
+      "sessions": [
+        "3539d3b3-4948-4e94-869f-58269a47bd3d",
+        "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d"
+      ]
+    },
+    {
+      "path": "workdir-d",
+      "sessions": [
+        "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+        "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
+        "d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f8a",
+        "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b"
+      ]
+    },
+    {
+      "path": "workdir-e",
+      "sessions": [
+        "f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f8a9b0c",
+        "a7b8c9d0-e1f2-4a3b-4c5d-6e7f8a9b0c1d"
+      ]
+    }
+  ]
+}

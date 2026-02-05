@@ -24,7 +24,7 @@ type Cache struct {
 func NewCache(baseDir string) (*Cache, error) {
 	var configPath string
 	if baseDir != "" {
-		configPath = filepath.Join(baseDir, "cache.json")
+		configPath = filepath.Join(baseDir, "geminictl", "cache.json")
 	} else {
 		home, err := os.UserHomeDir()
 		if err != nil {
