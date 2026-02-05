@@ -1,27 +1,32 @@
 # Specification: Project Operations
 
 ## Overview
-Implement essential management capabilities for projects within `geminictl`. This allows users to rectify incorrect path mappings and clean up their project landscape.
+Implement deep management capabilities for projects within `geminictl`. Unlike simple cache updates, these operations modify the underlying Gemini CLI storage structure to permanently delete data or migrate projects to new directory contexts.
 
 ## Core Features
 
-### 1. Change Working Directory
-- **Goal:** Allow users to manually assign or update the directory path for a specific Project ID.
-- **Trigger:** An interactive keybind (e.g., `c`) in the Projects pane.
+### 1. Change Working Directory (Move Project)
+- **Goal:** Re-assign an existing project history to a completely new file system location.
+- **Trigger:** Interactive keybind (`c`).
 - **Workflow:**
-    1.  User selects a project (Valid, Unlocated, or Orphaned).
-    2.  User triggers "Change Directory".
-    3.  User provides a new absolute path (input prompt or fuzzy search).
-    4.  The system validates the path and computes its SHA-256 hash.
-    5.  **Validation:** If the hash of the new path does NOT match the Project ID, the system warns the user (or rejects the change).
-    6.  **Persistence:** Upon success, the new path is saved to `cache.json`.
+    1.  User selects a project.
+    2.  User inputs a new absolute path.
+    3.  **Calculation:** Compute `NewID` = SHA-256(NewPath).
+    4.  **Validation:** Ensure `NewID` doesn't already exist in storage (collision check).
+    5.  **Migration:**
+        -   Rename directory: `~/.gemini/tmp/<OldID>` -> `~/.gemini/tmp/<NewID>`.
+        -   Update Metadata: Iterate all `session-*.json` files and replace the `projectHash` field with `NewID`.
+    6.  **Persistence:** Remove `OldID` from cache; Add `NewID` -> `NewPath` to cache.
 
 ### 2. Delete Project
-- **Goal:** Remove a project entry from the local `cache.json`.
-- **Trigger:** An interactive keybind (e.g., `d` or `x`).
-- **Safety:** Must prompt for confirmation.
-- **Scope:** This only deletes the *cache mapping*. It does NOT delete the Gemini CLI data in `~/.gemini/tmp` or the actual project directory.
+- **Goal:** Permanently destroy a project and all associated sessions.
+- **Trigger:** Interactive keybind (`d` or `x`).
+- **Safety:**
+    -   Calculate total sessions and messages to be deleted.
+    -   Prompt: "Permanently delete project and <N> sessions? (y/n)"
+- **Action:** `rm -rf ~/.gemini/tmp/<ProjectID>`.
+- **Persistence:** Remove from cache.
 
 ## Technical Constraints
-- **State Transition:** Changing a directory for an `Orphaned` or `Unlocated` project should move it to the `Valid` state if the path exists.
-- **UI Responsiveness:** Prompts must be handled gracefully within the Bubbletea TUI.
+- **Atomic-ish Operations:** Moving a project involves multiple file IO steps. If renaming fails, abort. If JSON updating fails, warn the user (state might be inconsistent).
+- **Session Parsing:** Must parse every session file to update the hash.

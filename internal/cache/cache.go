@@ -2,6 +2,7 @@ package cache
 
 import (
 	"encoding/json"
+	"fmt"
 	"geminictl/internal/gemini"
 	"os"
 	"path/filepath"
@@ -78,9 +79,23 @@ func (c *Cache) Set(id, path string) {
 	c.Data[id] = path
 }
 
+// VerifyAndSet checks if the path's hash matches the projectID and updates the cache.
+func (c *Cache) VerifyAndSet(projectID, path string) error {
+	hash, err := CalculateProjectID(path)
+	if err != nil {
+		return err
+	}
+	if hash != projectID {
+		return fmt.Errorf("path hash mismatch: expected %s, got %s", projectID, hash)
+	}
+	c.Set(projectID, path)
+	return c.Save()
+}
+
 // Delete removes a project from the cache.
-func (c *Cache) Delete(id string) {
+func (c *Cache) Delete(id string) error {
 	delete(c.Data, id)
+	return c.Save()
 }
 
 // Clear removes all projects from the cache.

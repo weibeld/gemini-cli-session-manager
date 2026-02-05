@@ -1,25 +1,25 @@
-# Implementation Plan - Project Operations
+# Implementation Plan - Project Operations (Deep)
 
-## Phase 1: Input Infrastructure
-- [ ] Task: Implement TUI Text Input
-    - [ ] Integrate `bubbles/textinput` for capturing paths.
-    - [ ] Create a "Prompt" component for confirmations.
-
-## Phase 2: Core Logic
-- [ ] Task: Implement Path Re-assignment
-    - [ ] Create logic to update `internal/cache` with a new path for an existing ID.
-    - [ ] Implement hash validation check.
+## Phase 1: Core Logic (internal/gemini)
 - [ ] Task: Implement Delete Logic
-    - [ ] Create logic to remove an ID from `internal/cache`.
+    - [ ] Add `gemini.DeleteProject(root, id)` to remove the directory.
+- [ ] Task: Implement Move/Migrate Logic
+    - [ ] Add `gemini.MoveProject(root, oldID, newPath)`:
+        -   Calculate new ID.
+        -   Rename directory.
+        -   Update `projectHash` in all session files.
 
-## Phase 3: TUI Integration
-- [ ] Task: Add Keybinds and UI Flow
-    - [ ] Map `c` to "Change Directory" flow.
-    - [ ] Map `d` to "Delete Project" confirmation flow.
-    - [ ] Update TUI states to reflect changes immediately.
+## Phase 2: TUI Integration
+- [ ] Task: Update Delete Flow
+    - [ ] Update `d` keybind to show stats (session count) in confirmation prompt.
+    - [ ] Call `gemini.DeleteProject` on confirmation.
+- [ ] Task: Update Change Directory Flow
+    - [ ] Update `c` keybind to capture new path.
+    - [ ] Call `gemini.MoveProject`.
+    - [ ] Update Cache: Delete old, Set new.
 
-## Phase 4: Verification
-- [ ] Task: Manual Verification
-    - [ ] Successfully change directory of an Orphaned project and see it become Valid.
-    - [ ] Delete a project and verify it disappears from `cache.json` (until next scan discovery).
-    - [ ] Task: Conductor - User Manual Verification 'Project Operations' (Protocol in workflow.md)
+## Phase 3: Verification
+- [ ] Task: Manual Verification (Testbed)
+    - [ ] Test Delete: Verify folder is gone from `testdata/run/gemini`.
+    - [ ] Test Move: Verify folder is renamed and session JSONs contain new hash.
+    - [ ] Task: Conductor - User Manual Verification 'Deep Project Operations' (Protocol in workflow.md)

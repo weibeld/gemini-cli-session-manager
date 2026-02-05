@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -30,6 +31,14 @@ type Focus int
 const (
 	FocusProjects Focus = iota
 	FocusSessions
+)
+
+type Mode int
+
+const (
+	ModeNav Mode = iota
+	ModeInputPath
+	ModeConfirmDelete
 )
 
 // Style definitions
@@ -56,8 +65,16 @@ var (
 			Bold(true).
 			Foreground(highlight)
 
+	tagStyle = lipgloss.NewStyle()
+
 	strikethroughStyle = lipgloss.NewStyle().
 				Strikethrough(true)
+
+	promptStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(highlight).
+			Padding(1).
+			Width(60)
 )
 
 // UI Helpers
@@ -116,13 +133,16 @@ type Model struct {
 	Selected      int
 	SessionCursor int
 	Focus         Focus
+	Mode          Mode
 	Width         int
 	Height        int
 	Err           error
 
-	scanner *scanner.Scanner
-	cache   *cache.Cache
-	spinner spinner.Model
+	scanner   *scanner.Scanner
+	cache     *cache.Cache
+	spinner   spinner.Model
+	textInput textinput.Model
+	prompt    string
 }
 
 // Internal message to carry the channel along with the result
@@ -136,45 +156,55 @@ type ScanFinishedMsg struct{}
 func NewModel(scanned []scanner.ProjectData, c *cache.Cache, sc *scanner.Scanner) Model {
 	var projects []projectView
 	for _, p := range scanned {
-		path, inCache := c.Get(p.ID)
-
-		var status ProjectStatus
-		if !inCache {
-			status = StatusScanning
-			path = p.ID
-		} else if path == "" {
-			status = StatusUnlocated
-			path = p.ID
-		} else {
-			if _, err := os.Stat(path); os.IsNotExist(err) {
-				status = StatusOrphaned
-			} else {
-				status = StatusValid
-			}
-		}
-
-		projects = append(projects, projectView{
-			ID:       p.ID,
-			Path:     path,
-			Status:   status,
-			Sessions: p.Sessions,
-		})
+		projects = append(projects, deriveProjectView(p.ID, p.Sessions, c))
 	}
 
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(highlight)
 
+	ti := textinput.New()
+	ti.Placeholder = "Absolute path..."
+	ti.Focus()
+
 	m := Model{
-		Projects: projects,
-		Selected: 0,
-		Focus:    FocusProjects,
-		scanner:  sc,
-		cache:    c,
-		spinner:  s,
+		Projects:  projects,
+		Selected:  0,
+		Focus:     FocusProjects,
+		Mode:      ModeNav,
+		scanner:   sc,
+		cache:     c,
+		spinner:   s,
+		textInput: ti,
 	}
 	m.sortProjects()
 	return m
+}
+
+func deriveProjectView(id string, sessions []scanner.Session, c *cache.Cache) projectView {
+	path, inCache := c.Get(id)
+
+	var status ProjectStatus
+	if !inCache {
+		status = StatusScanning
+		path = id
+	} else if path == "" {
+		status = StatusUnlocated
+		path = id
+	} else {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			status = StatusOrphaned
+		} else {
+			status = StatusValid
+		}
+	}
+
+	return projectView{
+		ID:       id,
+		Path:     path,
+		Status:   status,
+		Sessions: sessions,
+	}
 }
 
 func (m *Model) sortProjects() {
@@ -242,6 +272,11 @@ func waitForResolution(c <-chan scanner.Resolution) tea.Msg {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+
+	if m.Mode != ModeNav {
+		return m.updateInput(msg)
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -280,6 +315,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.Focus == FocusProjects {
 				m.Selected = m.Cursor
 				m.SessionCursor = 0
+			}
+		case "c":
+			if m.Focus == FocusProjects && len(m.Projects) > 0 {
+				m.Mode = ModeInputPath
+				m.textInput.SetValue("")
+				m.prompt = fmt.Sprintf("Enter new directory for project [%s]:", m.Projects[m.Cursor].ID[:8])
+				return m, textinput.Blink
+			}
+		case "d", "x":
+			if m.Focus == FocusProjects && len(m.Projects) > 0 {
+				m.Mode = ModeConfirmDelete
+				m.prompt = fmt.Sprintf("Remove project [%s] from cache?", m.Projects[m.Cursor].ID[:8])
 			}
 		}
 
@@ -320,6 +367,65 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			m.Mode = ModeNav
+			m.Err = nil
+			return m, nil
+		case "enter":
+			if m.Mode == ModeInputPath {
+				path := m.textInput.Value()
+				id := m.Projects[m.Cursor].ID
+				if err := m.cache.VerifyAndSet(id, path); err != nil {
+					m.Err = err
+					m.prompt = fmt.Sprintf("Error: %v\n\nPress any key to continue...", err)
+					// We stay in ModeInputPath but with error prompt
+					return m, nil
+				}
+				// Refresh project view
+				m.Projects[m.Cursor] = deriveProjectView(id, m.Projects[m.Cursor].Sessions, m.cache)
+				m.sortProjects()
+				m.Mode = ModeNav
+				m.Err = nil
+			}
+			return m, nil
+		case "y", "Y":
+			if m.Mode == ModeConfirmDelete {
+				id := m.Projects[m.Cursor].ID
+				_ = m.cache.Delete(id)
+				// We don't remove from m.Projects immediately because GC will handle it on next startup,
+				// but for immediate feedback we should probably refresh.
+				// However, if we delete from cache, it will show as 'Scanning' or 'Unlocated' on next scan.
+				// Let's just mark it as scanning to trigger a re-resolve attempt or just remove it from view.
+				// If we remove from view, the user might be confused if it reappears.
+				// Requirement says "remove project entry from the local cache.json".
+				// Let's just refresh the view for this project.
+				m.Projects[m.Cursor] = deriveProjectView(id, m.Projects[m.Cursor].Sessions, m.cache)
+				m.Mode = ModeNav
+			}
+		case "n", "N":
+			if m.Mode == ModeConfirmDelete {
+				m.Mode = ModeNav
+			}
+		default:
+			// If we had an error prompt, any key returns to nav or clears error
+			if m.Err != nil {
+				m.Mode = ModeNav
+				m.Err = nil
+				return m, nil
+			}
+		}
+	}
+
+	m.textInput, cmd = m.textInput.Update(msg)
+	return m, cmd
+}
+
 func (m Model) isScanningGlobal() bool {
 	for _, p := range m.Projects {
 		if p.Status == StatusScanning {
@@ -334,6 +440,7 @@ func (m Model) View() string {
 		return "No projects found in ~/.gemini/tmp"
 	}
 
+	// Calculate widths: 50/50 split
 	sidebarWidth := (m.Width / 2) - 2
 	mainWidth := m.Width - sidebarWidth - 6
 	paneHeight := m.Height - 6
@@ -402,22 +509,36 @@ func (m Model) View() string {
 			for i, s := range p.Sessions {
 				cursor := renderCursor(m.Focus == FocusSessions, m.SessionCursor == i)
 				style := getRowStyle(m.Focus == FocusSessions && m.SessionCursor == i)
-				
+
 				idStr := renderHash(s.ID)
-				content := fmt.Sprintf("%s %s | %s", 
-					idStr, 
-					style.Render(fmt.Sprintf("%d messages", s.MessageCount)), 
+				content := fmt.Sprintf("%s %s | %s",
+					idStr,
+					style.Render(fmt.Sprintf("%d messages", s.MessageCount)),
 					style.Render(formatRelativeTime(s.LastUpdate)))
-				
+
 				main.WriteString(fmt.Sprintf("%s%s\n", cursor, content))
 			}
 		}
 	}
 
-	return lipgloss.JoinHorizontal(lipgloss.Top,
+	view := lipgloss.JoinHorizontal(lipgloss.Top,
 		listStyle.Width(sidebarWidth).Height(paneHeight).Render(sidebar.String()),
 		detailsStyle.Width(mainWidth).Height(paneHeight).Render(main.String()),
 	)
+
+	if m.Mode != ModeNav {
+		var modalContent string
+		if m.Mode == ModeInputPath {
+			modalContent = fmt.Sprintf("%s\n\n%s", m.prompt, m.textInput.View())
+		} else {
+			modalContent = fmt.Sprintf("%s\n\n(y/n)", m.prompt)
+		}
+		modal := promptStyle.Render(modalContent)
+
+		return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, modal)
+	}
+
+	return view
 }
 
 func formatRelativeTime(t time.Time) string {
