@@ -36,3 +36,4 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 - [ ] **Track [directory_input_method_20260205]: Directory Input Method Research & Implementation**
   *Link: [./tracks/directory_input_method_20260205/](./tracks/directory_input_method_20260205/)*
+\n---\n\n- [~] **Track [testbed_refinement_20260205]: Testbed Refinement & Housekeeping**\n*Link: [./tracks/testbed_refinement_20260205/](./tracks/testbed_refinement_20260205/)*

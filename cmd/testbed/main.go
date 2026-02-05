@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"geminictl/internal/gemini"
+	"github.com/spf13/cobra"
 )
 
 type Config struct {
@@ -17,39 +17,57 @@ type Config struct {
 }
 
 type ProjectConfig struct {
-	Path     string   `json:"path"` // Relative/Absolute (created) or Empty (unlocated)
+	Path     string   `json:"path"`
 	Sessions []string `json:"sessions"`
 }
 
-func main() {
-	configPath := flag.String("config", "", "MANDATORY: Path to test configuration JSON")
-	testbedDir := flag.String("dir", "", "MANDATORY: Directory where the testbed will be generated")
-	flag.Parse()
+var (
+	configPath string
+	testbedDir string
+	quiet      bool
+)
 
-	if *configPath == "" || *testbedDir == "" {
-		fmt.Println("Usage: testbed -config <file> -dir <dir>")
-		flag.PrintDefaults()
+var rootCmd = &cobra.Command{
+	Use:   "testbed",
+	Short: "Gemini CLI Session Manager Testbed Generator",
+	Long:  `A tool to generate realistic, isolated Gemini CLI data for development and testing.`,
+	Run:   runGenerator,
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to test configuration JSON (MANDATORY)")
+	rootCmd.PersistentFlags().StringVarP(&testbedDir, "dir", "d", "", "Directory where the testbed will be generated (MANDATORY)")
+	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Only print a final summary")
+	_ = rootCmd.MarkPersistentFlagRequired("config")
+	_ = rootCmd.MarkPersistentFlagRequired("dir")
+}
+
+func runGenerator(cmd *cobra.Command, args []string) {
+	start := time.Now()
+
+	if !quiet {
+		fmt.Printf("Refreshing testbed in %s...\n", testbedDir)
+	}
+
+	// 1. Initialize
+	_ = os.RemoveAll(testbedDir)
+	if err := os.MkdirAll(testbedDir, 0755); err != nil {
+		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Refreshing testbed in %s...\n", *testbedDir)
+	geminiRoot := filepath.Join(testbedDir, "gemini")
+	workdirsRoot := filepath.Join(testbedDir, "workdirs")
+	geminictlConfigRoot := filepath.Join(testbedDir, "geminictl")
 	
-	// Clear and (re)create the output directory
-	_ = os.RemoveAll(*testbedDir)
-	if err := os.MkdirAll(*testbedDir, 0755); err != nil {
-		fmt.Printf("Error creating output directory: %v\n", err)
-		os.Exit(1)
-	}
-
-	geminiRoot := filepath.Join(*testbedDir, "gemini")
-	workdirsRoot := filepath.Join(*testbedDir, "workdirs")
 	_ = os.MkdirAll(geminiRoot, 0755)
 	_ = os.MkdirAll(workdirsRoot, 0755)
+	_ = os.MkdirAll(geminictlConfigRoot, 0755)
 
-	// 1. Load Config
-	configData, err := os.ReadFile(*configPath)
+	// 2. Load Config
+	configData, err := os.ReadFile(configPath)
 	if err != nil {
-		fmt.Printf("Error reading config %s: %v\n", *configPath, err)
+		fmt.Printf("Error reading config %s: %v\n", configPath, err)
 		os.Exit(1)
 	}
 	var config Config
@@ -58,27 +76,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 2. Load Session Template
-	sessionTemplateData, err := os.ReadFile("cmd/testbed/templates/session.json")
+	// 3. Load Session Template
+	// Note: We use a relative path from the binary location or cwd. 
+	// For dev, cmd/testbed/templates/session.json is expected.
+	templatePath := filepath.Join("cmd", "testbed", "templates", "session.json")
+	sessionTemplateData, err := os.ReadFile(templatePath)
 	if err != nil {
 		fmt.Printf("Error reading template: %v\n", err)
 		os.Exit(1)
 	}
 
 	now := time.Now().Format(time.RFC3339)
+	cacheData := make(map[string]string)
 
-	// 3. Process Projects
+	// 4. Process Projects
 	for i, p := range config.Projects {
 		var finalPath string
 		var projectHash string
 		var isUnlocated bool
 
 		if p.Path == "" {
-			// Explicit Unlocated: use a unique virtual path and DO NOT create directory
 			finalPath = fmt.Sprintf("/unlocated/project-%d", i)
 			isUnlocated = true
 		} else {
-			// Valid Project: Create the directory (relative to workdirsRoot if relative)
 			finalPath = filepath.Join(workdirsRoot, p.Path)
 			_ = os.MkdirAll(finalPath, 0755)
 			abs, _ := filepath.Abs(finalPath)
@@ -86,16 +106,23 @@ func main() {
 			isUnlocated = false
 		}
 
-		// Compute hash based on the (virtual or real) absolute path
 		projectHash, _ = gemini.HashProjectID(finalPath)
 
-		if isUnlocated {
-			fmt.Printf("Simulating [Unlocated] project: %s (%s)\n", finalPath, projectHash)
+		if !isUnlocated {
+			cacheData[projectHash] = finalPath
 		} else {
-			fmt.Printf("Creating [Valid] project: %s -> %s\n", p.Path, projectHash)
+			cacheData[projectHash] = ""
 		}
 
-		// 4. Create Sessions
+		if !quiet {
+			status := "Valid"
+			if isUnlocated {
+				status = "Unlocated"
+			}
+			fmt.Printf("[%s] %s -> %s\n", status, p.Path, projectHash)
+		}
+
+		// 5. Create Sessions
 		for _, sID := range p.Sessions {
 			content := string(sessionTemplateData)
 			content = strings.ReplaceAll(content, "{{PROJECT_HASH}}", projectHash)
@@ -103,18 +130,24 @@ func main() {
 
 			var s gemini.Session
 			if err := json.Unmarshal([]byte(content), &s); err != nil {
-				fmt.Printf("Error unmarshalling template for %s: %v\n", sID, err)
 				continue
 			}
-			
 			s.StartTime = now
 			s.LastUpdated = now
 
-			if err := gemini.WriteSession(geminiRoot, projectHash, s); err != nil {
-				fmt.Printf("Error writing session %s: %v\n", sID, err)
-			}
+			_ = gemini.WriteSession(geminiRoot, projectHash, s)
 		}
 	}
 
-	fmt.Println("Testbed refreshed successfully.")
+	// 6. Write Cache (in the new location)
+	cacheJSON, _ := json.MarshalIndent(cacheData, "", "  ")
+	_ = os.WriteFile(filepath.Join(geminictlConfigRoot, "cache.json"), cacheJSON, 0644)
+
+	fmt.Printf("Success: Generated %d projects in %v.\n", len(config.Projects), time.Since(start).Round(time.Millisecond))
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
 }
