@@ -12,7 +12,6 @@ import (
 	"sort"
 
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -32,14 +31,6 @@ type Focus int
 const (
 	FocusProjects Focus = iota
 	FocusSessions
-)
-
-type Mode int
-
-const (
-	ModeNav Mode = iota
-	ModeInputPath
-	ModeConfirmDelete
 )
 
 // Style definitions
@@ -66,16 +57,8 @@ var (
 			Bold(true).
 			Foreground(highlight)
 
-	tagStyle = lipgloss.NewStyle()
-
 	strikethroughStyle = lipgloss.NewStyle().
 				Strikethrough(true)
-
-	promptStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(highlight).
-			Padding(1).
-			Width(60)
 )
 
 // UI Helpers
@@ -134,16 +117,14 @@ type Model struct {
 	Selected      int
 	SessionCursor int
 	Focus         Focus
-	Mode          Mode
 	Width         int
 	Height        int
 	Err           error
 
-	scanner   *scanner.Scanner
-	cache     *cache.Cache
-	spinner   spinner.Model
-	textInput textinput.Model
-	prompt    string
+	scanner *scanner.Scanner
+	cache   *cache.Cache
+	spinner spinner.Model
+	modal   Modal
 }
 
 // Internal message to carry the channel along with the result
@@ -164,19 +145,13 @@ func NewModel(scanned []scanner.ProjectData, c *cache.Cache, sc *scanner.Scanner
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(highlight)
 
-	ti := textinput.New()
-	ti.Placeholder = "Absolute path..."
-	ti.Focus()
-
 	m := Model{
-		Projects:  projects,
-		Selected:  0,
-		Focus:     FocusProjects,
-		Mode:      ModeNav,
-		scanner:   sc,
-		cache:     c,
-		spinner:   s,
-		textInput: ti,
+		Projects: projects,
+		Selected: 0,
+		Focus:    FocusProjects,
+		scanner:  sc,
+		cache:    c,
+		spinner:  s,
 	}
 	m.sortProjects()
 	return m
@@ -274,8 +249,13 @@ func waitForResolution(c <-chan scanner.Resolution) tea.Msg {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
-	if m.Mode != ModeNav {
-		return m.updateInput(msg)
+	if m.modal != nil {
+		switch msg := msg.(type) {
+		case ModalResult:
+			return m.handleModalResult(msg)
+		}
+		m.modal, cmd = m.modal.Update(msg)
+		return m, cmd
 	}
 
 	switch msg := msg.(type) {
@@ -317,29 +297,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Selected = m.Cursor
 				m.SessionCursor = 0
 			}
-		case "c":
+		case "m":
 			if m.Focus == FocusProjects && len(m.Projects) > 0 {
-				p := m.Projects[m.Cursor]
-				m.Mode = ModeInputPath
-				initialValue := p.Path
+				p := m.Projects[m.Selected]
+				startDir := p.Path
 				if p.Status == StatusUnlocated || p.Status == StatusScanning {
-					home, _ := os.UserHomeDir()
-					initialValue = home
+					startDir, _ = os.UserHomeDir()
 				}
-				m.textInput.SetValue(initialValue)
-				m.prompt = fmt.Sprintf("Enter new directory for project [%s]:", p.ID[:8])
-				return m, textinput.Blink
+				m.modal = NewTextInputModal(fmt.Sprintf("Enter new directory for [%s]", p.ID[:8]), startDir, "Absolute path...")
+				return m, m.modal.Init()
 			}
-		case "d", "x":
+		case "d":
 			if m.Focus == FocusProjects && len(m.Projects) > 0 {
-				p := m.Projects[m.Cursor]
+				p := m.Projects[m.Selected]
 				totalMessages := 0
 				for _, s := range p.Sessions {
 					totalMessages += s.MessageCount
 				}
-				m.Mode = ModeConfirmDelete
-				m.prompt = fmt.Sprintf("Permanently delete project [%s] and its %d sessions (%d messages)?",
-					p.ID[:8], len(p.Sessions), totalMessages)
+				m.modal = ConfirmModal{
+					Title:  "Confirm Deletion",
+					Prompt: fmt.Sprintf("Permanently delete project [%s] and its %d sessions (%d messages)?", p.ID[:8], len(p.Sessions), totalMessages),
+				}
+				return m, m.modal.Init()
 			}
 		}
 
@@ -380,81 +359,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
+func (m Model) handleModalResult(res ModalResult) (tea.Model, tea.Cmd) {
+	if res.Canceled {
+		m.modal = nil
+		return m, nil
+	}
 
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "esc":
-			m.Mode = ModeNav
-			m.Err = nil
-			return m, nil
-		case "enter":
-			if m.Mode == ModeInputPath {
-				newPath := m.textInput.Value()
-				oldID := m.Projects[m.Cursor].ID
-
-				// 1. Perform deep move
-				newID, err := gemini.MoveProject(m.scanner.RootDir, oldID, newPath)
-				if err != nil {
-					m.Err = err
-					m.prompt = fmt.Sprintf("Error migrating project: %v\n\nPress any key to continue...", err)
-					return m, nil
+	switch m.modal.(type) {
+	case ConfirmModal:
+		if res.Value.(bool) {
+			p := m.Projects[m.Selected]
+			if err := gemini.DeleteProject(m.scanner.RootDir, p.ID); err != nil {
+				m.Err = err
+			} else {
+				_ = m.cache.Delete(p.ID)
+				m.Projects = append(m.Projects[:m.Selected], m.Projects[m.Selected+1:]...)
+				if m.Selected >= len(m.Projects) && len(m.Projects) > 0 {
+					m.Selected = len(m.Projects) - 1
 				}
-
-				// 2. Update Cache
-				_ = m.cache.Delete(oldID)
-				m.cache.Set(newID, newPath)
-				_ = m.cache.Save()
-
-				// 3. Refresh project in view
-				m.Projects[m.Cursor] = deriveProjectView(newID, m.Projects[m.Cursor].Sessions, m.cache)
-				m.sortProjects()
-				m.Mode = ModeNav
-				m.Err = nil
+				m.Cursor = m.Selected
 			}
-			return m, nil
-		case "y", "Y":
-			if m.Mode == ModeConfirmDelete {
-				id := m.Projects[m.Cursor].ID
-				// 1. Delete from physical storage
-				if err := gemini.DeleteProject(m.scanner.RootDir, id); err != nil {
-					m.Err = err
-					m.prompt = fmt.Sprintf("Error deleting project: %v\n\nPress any key to continue...", err)
-					return m, nil
-				}
-				// 2. Delete from cache
-				_ = m.cache.Delete(id)
-
-				// 3. Remove from view
-				m.Projects = append(m.Projects[:m.Cursor], m.Projects[m.Cursor+1:]...)
-				if m.Cursor >= len(m.Projects) && len(m.Projects) > 0 {
-					m.Cursor = len(m.Projects) - 1
-				}
-				if len(m.Projects) > 0 {
-					m.Selected = m.Cursor
-				} else {
-					m.Selected = 0
-				}
-				m.Mode = ModeNav
-			}
-		case "n", "N":
-			if m.Mode == ModeConfirmDelete {
-				m.Mode = ModeNav
-			}
-		default:
-			// If we had an error prompt, any key returns to nav or clears error
-			if m.Err != nil {
-				m.Mode = ModeNav
-				m.Err = nil
-				return m, nil
-			}
+		}
+	case TextInputModal:
+		newPath := res.Value.(string)
+		oldID := m.Projects[m.Selected].ID
+		newID, err := gemini.MoveProject(m.scanner.RootDir, oldID, newPath)
+		if err != nil {
+			m.Err = err
+		} else {
+			_ = m.cache.Delete(oldID)
+			m.cache.Set(newID, newPath)
+			_ = m.cache.Save()
+			m.Projects[m.Selected] = deriveProjectView(newID, m.Projects[m.Selected].Sessions, m.cache)
+			m.sortProjects()
 		}
 	}
 
-	m.textInput, cmd = m.textInput.Update(msg)
-	return m, cmd
+	m.modal = nil
+	return m, nil
 }
 
 func (m Model) isScanningGlobal() bool {
@@ -471,7 +413,6 @@ func (m Model) View() string {
 		return "No projects found in ~/.gemini/tmp"
 	}
 
-	// Calculate widths: 50/50 split
 	sidebarWidth := (m.Width / 2) - 2
 	mainWidth := m.Width - sidebarWidth - 6
 	paneHeight := m.Height - 6
@@ -557,16 +498,8 @@ func (m Model) View() string {
 		detailsStyle.Width(mainWidth).Height(paneHeight).Render(main.String()),
 	)
 
-	if m.Mode != ModeNav {
-		var modalContent string
-		if m.Mode == ModeInputPath {
-			modalContent = fmt.Sprintf("%s\n\n%s", m.prompt, m.textInput.View())
-		} else {
-			modalContent = fmt.Sprintf("%s\n\n(y/n)", m.prompt)
-		}
-		modal := promptStyle.Render(modalContent)
-
-		return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, modal)
+	if m.modal != nil {
+		return m.modal.View(m.Width, m.Height)
 	}
 
 	return view
