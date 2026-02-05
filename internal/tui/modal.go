@@ -192,7 +192,7 @@ func (m *InspectModal) Update(msg tea.Msg) (Modal, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "esc", "q":
+		case "esc", "q", " ":
 			return m, func() tea.Msg { return ModalResult{Canceled: true} }
 		}
 	case tea.WindowSizeMsg:

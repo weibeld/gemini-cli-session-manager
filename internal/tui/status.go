@@ -323,7 +323,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.SessionCursor++
 				}
 			}
-		case "enter", " ", "v":
+		case "enter":
+			if m.Focus == FocusProjects {
+				m.Selected = m.Cursor
+				m.SessionCursor = 0
+			}
+		case " ":
 			if m.Focus == FocusProjects {
 				m.Selected = m.Cursor
 				m.SessionCursor = 0
