@@ -21,6 +21,7 @@
 - Correct pluralisation in UI (e.g. "message" vs "messages")
 - Sessions of unlocated projects cannot be opened in Gemini CLI since we can't change to the unknown directory. Maybe we should gracefully handle this, e.g. by instantly showing a message when the user attempts to open such a session (the Inspect view, on the other hand, still works)
 - UI tweak: make it clearer in which pane the cursor is, e.g. change the frame colour
+- Check whether the Inspect view labels messages only as User and Gemini. It seems that other types of messages (e.g. "info") are not labelled as such
 
 ## Done
 

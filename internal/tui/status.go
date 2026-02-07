@@ -401,6 +401,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Open Session in Gemini CLI
 				p := m.Projects[m.Selected]
 				if len(p.Sessions) > 0 {
+					if p.Status != StatusValid {
+						m.modal = ErrorModal{
+							Title: "Cannot Open Session",
+							Err:   fmt.Errorf("project directory is unlocated or scanning. Please 'Move' ([m]) the project to a valid directory first."),
+						}
+						return m, m.modal.Init()
+					}
 					s := p.Sessions[m.SessionCursor]
 					m.modal = ConfirmModal{
 						Title:  "Open Session",
