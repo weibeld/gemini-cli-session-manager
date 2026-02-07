@@ -25,10 +25,13 @@ This file tracks all major tracks for the project. Each track has its own detail
 - [x] **Track [testbed_refinement_20260205]: Testbed Refinement & Housekeeping**
   *Link: [./archive/testbed_refinement_20260205/](./archive/testbed_refinement_20260205/)*
 
+- [x] **Track [session_operations_20260204]: Session Operations**
+  *Link: [./archive/session_operations_20260204/](./archive/session_operations_20260204/)*
+
 ---
 
-- [~] **Track [session_operations_20260204]: Session Operations**
-  *Link: [./tracks/session_operations_20260204/](./tracks/session_operations_20260204/)*
+- [ ] **Track [ui_polish_20260207]: UI Polish & Navigation**
+  *Link: [./tracks/ui_polish_20260207/](./tracks/ui_polish_20260207/)*
 
 ---
 
