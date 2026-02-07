@@ -59,6 +59,16 @@ type Session struct {
 	FilePath       string    `json:"-"`
 }
 
+// GetLastUpdate returns the parsed LastUpdated timestamp from the JSON, 
+// falling back to the file system modification time if parsing fails.
+func (s Session) GetLastUpdate() time.Time {
+	t, err := time.Parse(time.RFC3339, s.LastUpdated)
+	if err != nil {
+		return s.FileLastUpdate
+	}
+	return t
+}
+
 // HashProjectID returns the SHA-256 hash of the standardized absolute path.
 func HashProjectID(path string) (string, error) {
 	abs, err := filepath.Abs(path)
@@ -180,6 +190,53 @@ func WriteSession(rootDir, projectID string, s Session) error {
 func DeleteProject(rootDir, projectID string) error {
 	path := filepath.Join(rootDir, projectID)
 	return os.RemoveAll(path)
+}
+
+// DeleteSession removes all files associated with a specific session ID.
+func DeleteSession(rootDir, projectID, sessionID string) error {
+	allSessions, err := ReadSessions(rootDir, projectID)
+	if err != nil {
+		return err
+	}
+
+	for _, s := range allSessions {
+		if s.ID == sessionID {
+			if err := os.Remove(s.FilePath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// MoveSession relocates a session to a different project.
+func MoveSession(rootDir, oldProjectID, newProjectID, sessionID string) error {
+	if oldProjectID == newProjectID {
+		return nil
+	}
+
+	allSessions, err := ReadSessions(rootDir, oldProjectID)
+	if err != nil {
+		return err
+	}
+
+	for _, s := range allSessions {
+		if s.ID == sessionID {
+			oldPath := s.FilePath
+			s.ProjectHash = newProjectID
+			
+			if err := WriteSession(rootDir, newProjectID, s); err != nil {
+				return err
+			}
+			
+			if err := os.Remove(oldPath); err != nil {
+				// We could try to roll back but it's complex. 
+				// At least the new file is written.
+				return fmt.Errorf("failed to remove old session file: %w", err)
+			}
+		}
+	}
+	return nil
 }
 
 // MoveProject migrates a project to a new directory path.

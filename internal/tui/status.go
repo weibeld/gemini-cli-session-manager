@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -40,6 +41,9 @@ const (
 	ModeMove
 	ModeDelete
 	ModeInspect
+	ModeOpen
+	ModeDeleteSession
+	ModeMoveSession
 )
 
 // Style definitions
@@ -145,6 +149,10 @@ type resolutionPacket struct {
 
 type ScanFinishedMsg struct{}
 
+type SessionOpenedMsg struct {
+	Err error
+}
+
 func NewModel(scanned []scanner.ProjectData, c *cache.Cache, sc *scanner.Scanner) *Model {
 	var projects []projectView
 	for _, p := range scanned {
@@ -223,6 +231,68 @@ func (m *Model) sortProjects() {
 				break
 			}
 		}
+	}
+}
+
+// syncState updates the projects list from fresh scanner data while preserving selection.
+func (m *Model) syncState(scanned []scanner.ProjectData) {
+	// 1. Capture current selection by ID
+	var selectedProjectID string
+	var selectedSessionID string
+	
+	if len(m.Projects) > 0 && m.Selected < len(m.Projects) {
+		p := m.Projects[m.Selected]
+		selectedProjectID = p.ID
+		if len(p.Sessions) > 0 && m.SessionCursor < len(p.Sessions) {
+			selectedSessionID = p.Sessions[m.SessionCursor].ID
+		}
+	}
+
+	// 2. Build new state
+	var projects []projectView
+	for _, p := range scanned {
+		projects = append(projects, deriveProjectView(p.ID, p.Sessions, m.cache))
+	}
+	m.Projects = projects
+	m.sortProjects()
+
+	// 3. Restore Project selection
+	if selectedProjectID != "" {
+		for i, p := range m.Projects {
+			if p.ID == selectedProjectID {
+				m.Selected = i
+				m.Cursor = i // Keep cursor synced with selected
+				
+				// 4. Restore Session selection within the project
+				if selectedSessionID != "" {
+					for j, s := range p.Sessions {
+						if s.ID == selectedSessionID {
+							m.SessionCursor = j
+							break
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// 5. Final safety clamps
+	if len(m.Projects) == 0 {
+		m.Selected = 0
+		m.Cursor = 0
+		m.SessionCursor = 0
+		return
+	}
+	
+	m.Selected = min(m.Selected, len(m.Projects)-1)
+	m.Cursor = min(m.Cursor, len(m.Projects)-1)
+	
+	p := m.Projects[m.Selected]
+	if len(p.Sessions) > 0 {
+		m.SessionCursor = min(m.SessionCursor, len(p.Sessions)-1)
+	} else {
+		m.SessionCursor = 0
 	}
 }
 
@@ -327,6 +397,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.Focus == FocusProjects {
 				m.Selected = m.Cursor
 				m.SessionCursor = 0
+			} else {
+				// Open Session in Gemini CLI
+				p := m.Projects[m.Selected]
+				if len(p.Sessions) > 0 {
+					s := p.Sessions[m.SessionCursor]
+					m.modal = ConfirmModal{
+						Title:  "Open Session",
+						Prompt: fmt.Sprintf("Open session [%s] in Gemini CLI?", s.ID[:8]),
+					}
+					m.Mode = ModeOpen
+					return m, m.modal.Init()
+				}
 			}
 		case " ":
 			if m.Focus == FocusProjects {
@@ -351,8 +433,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "m":
-			if m.Focus == FocusProjects && len(m.Projects) > 0 {
-				p := m.Projects[m.Selected]
+			if len(m.Projects) == 0 {
+				break
+			}
+			p := m.Projects[m.Selected]
+			if m.Focus == FocusProjects {
 				m.Mode = ModeMove
 				startDir := p.Path
 				if p.Status == StatusUnlocated || p.Status == StatusScanning {
@@ -360,10 +445,40 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.modal = NewTextInputModal(fmt.Sprintf("Move [%s] to:", p.ID[:8]), startDir, "Absolute path...")
 				return m, m.modal.Init()
+			} else {
+				// Move Session
+				if len(p.Sessions) == 0 {
+					break
+				}
+				s := p.Sessions[m.SessionCursor]
+				var options []ListOption
+				for _, other := range m.Projects {
+					if other.ID == p.ID {
+						continue
+					}
+					label := other.Path
+					if other.Status == StatusUnlocated {
+						label = fmt.Sprintf("[%s] Unlocated", other.ID[:8])
+					}
+					options = append(options, ListOption{ID: other.ID, Label: label})
+				}
+				if len(options) == 0 {
+					m.Err = fmt.Errorf("no other projects to move session to")
+					break
+				}
+				m.modal = ListSelectorModal{
+					Title:   fmt.Sprintf("Move Session [%s] to:", s.ID[:8]),
+					Options: options,
+				}
+				m.Mode = ModeMoveSession
+				return m, m.modal.Init()
 			}
 		case "d":
-			if m.Focus == FocusProjects && len(m.Projects) > 0 {
-				p := m.Projects[m.Selected]
+			if len(m.Projects) == 0 {
+				break
+			}
+			p := m.Projects[m.Selected]
+			if m.Focus == FocusProjects {
 				totalMessages := 0
 				for _, s := range p.Sessions {
 					totalMessages += s.MessageCount
@@ -373,6 +488,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					Prompt: fmt.Sprintf("Permanently delete project [%s] and its %d sessions (%d messages)?", p.ID[:8], len(p.Sessions), totalMessages),
 				}
 				m.Mode = ModeDelete
+				return m, m.modal.Init()
+			} else {
+				// Delete Session
+				if len(p.Sessions) == 0 {
+					break
+				}
+				s := p.Sessions[m.SessionCursor]
+				m.modal = ConfirmModal{
+					Title:  "Delete Session",
+					Prompt: fmt.Sprintf("Permanently delete session [%s] (%d messages)?", s.ID[:8], s.MessageCount),
+				}
+				m.Mode = ModeDeleteSession
 				return m, m.modal.Init()
 			}
 		}
@@ -400,6 +527,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cache.Set(m.Projects[i].ID, "")
 				_ = m.cache.Save()
 			}
+		}
+	case SessionOpenedMsg:
+		if msg.Err != nil {
+			m.modal = ErrorModal{
+				Title: "Open Failed",
+				Err:   msg.Err,
+			}
+		}
+		// Always refresh state after return, as new messages might have been added
+		if updated, err := m.scanner.Scan(); err == nil {
+			m.syncState(updated)
 		}
 	}
 
@@ -441,6 +579,45 @@ func (m *Model) handleModalResult(res ModalResult) (tea.Model, tea.Cmd) {
 			_ = m.cache.Save()
 			m.Projects[m.Selected] = deriveProjectView(newID, m.Projects[m.Selected].Sessions, m.cache)
 			m.sortProjects()
+		}
+	case ModeOpen:
+		if res.Value.(bool) {
+			p := m.Projects[m.Selected]
+			s := p.Sessions[m.SessionCursor]
+			
+			// Wrap in a shell to clear the screen and show a loading message
+			script := fmt.Sprintf("clear && echo 'Launching Gemini CLI for session [%s]...' && gemini --resume %s && clear", s.ID[:8], s.ID)
+			c := exec.Command("sh", "-c", script)
+			c.Dir = p.Path
+			
+			return m, tea.ExecProcess(c, func(err error) tea.Msg {
+				return SessionOpenedMsg{Err: err}
+			})
+		}
+	case ModeDeleteSession:
+		if res.Value.(bool) {
+			p := &m.Projects[m.Selected]
+			s := p.Sessions[m.SessionCursor]
+			if err := gemini.DeleteSession(m.scanner.RootDir, p.ID, s.ID); err != nil {
+				m.Err = err
+			} else {
+				// Refresh the entire state to be safe and simple
+				if updated, err := m.scanner.Scan(); err == nil {
+					m.syncState(updated)
+				}
+			}
+		}
+	case ModeMoveSession:
+		targetProjectID := res.Value.(string)
+		p := &m.Projects[m.Selected]
+		s := p.Sessions[m.SessionCursor]
+		if err := gemini.MoveSession(m.scanner.RootDir, p.ID, targetProjectID, s.ID); err != nil {
+			m.Err = err
+		} else {
+			// Refresh the entire state
+			if updated, err := m.scanner.Scan(); err == nil {
+				m.syncState(updated)
+			}
 		}
 	}
 

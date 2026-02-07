@@ -4,8 +4,9 @@
 - [x] Task: Implement Session Viewport b7e2a06
     - [x] Create a viewport component to render session JSON content.
     - [x] Implement text wrapping and scrolling for long transcripts.
-- [~] Task: Implement 'Resume' Action
+- [~] Task: Implement 'Open' Action (in Gemini CLI)
     - [ ] Use `tea.ExecProcess` to launch `gemini --resume`.
+    - [ ] Implement confirmation dialog before opening.
     - [ ] Implement directory switching before execution.
 
 ## Phase 2: File Operations
@@ -17,9 +18,9 @@
 
 ## Phase 3: TUI Integration
 - [ ] Task: Add Keybinds
-    - [ ] Map `v` or `Enter` to Inspect.
-    - [ ] Map `r` to Resume.
-    - [ ] Map `d` to Delete.
+    - [ ] Map `Space` to Inspect.
+    - [ ] Map `Enter` to Open (with confirmation).
+    - [ ] Map `d` to Delete (with confirmation).
     - [ ] Map `m` to Move.
 
 ## Phase 4: Verification

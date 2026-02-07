@@ -77,16 +77,17 @@ func (s *Scanner) Scan() ([]ProjectData, error) {
 		// Aggregate multi-file sessions
 		sessionMap := make(map[string]*Session)
 		for _, sess := range sessions {
+			lastUpdate := sess.GetLastUpdate()
 			if existing, ok := sessionMap[sess.ID]; ok {
 				existing.MessageCount += len(sess.Messages)
-				if sess.FileLastUpdate.After(existing.LastUpdate) {
-					existing.LastUpdate = sess.FileLastUpdate
+				if lastUpdate.After(existing.LastUpdate) {
+					existing.LastUpdate = lastUpdate
 				}
 			} else {
 				sessionMap[sess.ID] = &Session{
 					ID:           sess.ID,
 					MessageCount: len(sess.Messages),
-					LastUpdate:   sess.FileLastUpdate,
+					LastUpdate:   lastUpdate,
 				}
 			}
 		}

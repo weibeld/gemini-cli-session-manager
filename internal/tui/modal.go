@@ -69,6 +69,30 @@ func (m ConfirmModal) View(w, h int) string {
 	return renderModal(w, h, m.Title, content)
 }
 
+// --- Error Modal ---
+
+type ErrorModal struct {
+	Title string
+	Err   error
+}
+
+func (m ErrorModal) Init() tea.Cmd { return nil }
+func (m ErrorModal) Update(msg tea.Msg) (Modal, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter", "esc", "q", " ":
+			return nil, func() tea.Msg { return ModalResult{Canceled: true} }
+		}
+	}
+	return m, nil
+}
+func (m ErrorModal) View(w, h int) string {
+	style := lipgloss.NewStyle().Foreground(warning).Bold(true)
+	content := fmt.Sprintf("%s\n\n(press any key to close)", style.Render(m.Err.Error()))
+	return renderModal(w, h, m.Title, content)
+}
+
 // --- Text Input Modal ---
 
 type TextInputModal struct {
